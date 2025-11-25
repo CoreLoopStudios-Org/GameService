@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\GameService.ApiService\GameService.ApiService.csproj" />
     <ProjectReference Include="..\GameService.AppHost\GameService.AppHost.csproj" />
   </ItemGroup>
 

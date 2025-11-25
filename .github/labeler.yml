@@ -1,0 +1,36 @@
+# Automatically label PRs based on changed files
+
+documentation:
+  - '**/*.md'
+  - 'docs/**/*'
+
+tests:
+  - 'GameService.Tests/**/*'
+  - '**/*Tests.cs'
+
+# 🧠 Core Aspire Components
+app-host:
+  - 'GameService.AppHost/**/*'
+
+service-defaults:
+  - 'GameService.ServiceDefaults/**/*'
+
+# 🎮 Microservices
+api-service:
+  - 'GameService.ApiService/**/*'
+  - 'GameService.ApiService.http'
+
+web-frontend:
+  - 'GameService.Web/**/*'
+  - '**/*.razor'
+  - '**/*.css'
+
+# 🛠 Infrastructure
+configuration:
+  - '**/*.json'
+  - '**/*.yaml'
+  - '.github/**/*'
+
+dependencies:
+  - '**/packages.lock.json'
+  - '**/*.csproj'

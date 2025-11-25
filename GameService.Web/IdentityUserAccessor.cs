@@ -1,4 +1,4 @@
-using GameService.Web.Data;
+using GameService.ServiceDefaults.Data;
 using Microsoft.AspNetCore.Identity;
 
 namespace GameService.Web;

@@ -1,15 +1,8 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
 using GameService.ApiService;
-using GameService.ApiService.Data;
-using GameService.ApiService.DTOs;
-using GameService.ApiService.Models;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authorization;
+using GameService.ServiceDefaults.Data;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
@@ -22,24 +15,9 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, GameJsonContext.Default);
 });
 
-var jwtKey = "SuperSecretKeyThatShouldBeInUserSecretsOrKeyVault123!";
-var keyBytes = Encoding.UTF8.GetBytes(jwtKey);
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
-            ValidateIssuer = false,
-            ValidateAudience = false,
-            ClockSkew = TimeSpan.Zero
-        };
-    });
-
 builder.Services.AddAuthorization();
-builder.Services.AddOpenApi();
+builder.Services.AddIdentityApiEndpoints<ApplicationUser>()
+    .AddEntityFrameworkStores<GameDbContext>();
 
 var app = builder.Build();
 
@@ -48,194 +26,100 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<GameDbContext>();
-    db.Database.EnsureCreated();
+    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+
+    await db.Database.EnsureCreatedAsync();
+
+    var adminEmail = "admin@gameservice.com";
+    var adminPass = "AdminPass123!";
+
+    if (await userManager.FindByEmailAsync(adminEmail) is null)
+    {
+        var admin = new ApplicationUser { UserName = adminEmail, Email = adminEmail, EmailConfirmed = true };
+        var result = await userManager.CreateAsync(admin, adminPass);
+        
+        if (result.Succeeded)
+        {
+            db.PlayerProfiles.Add(new PlayerProfile { UserId = admin.Id, Coins = 1_000_000 });
+            await db.SaveChangesAsync();
+            Console.WriteLine($"✅ Admin Created: {adminEmail} / {adminPass}");
+        }
+    }
 }
 
-app.UseAuthentication();
-app.UseAuthorization();
-
-var authGroup = app.MapGroup("/auth");
-
-authGroup.MapPost("/register", async (RegisterRequest req, GameDbContext db) =>
-{
-    if (await db.Users.AnyAsync(u => u.Username == req.Username || u.Email == req.Email))
-        return Results.Conflict("User already exists");
-
-    var user = new User
-    {
-        Username = req.Username,
-        Email = req.Email,
-        PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
-        Profile = new PlayerProfile
-        {
-            Coins = 100,
-            Version = Guid.NewGuid()
-        }
-    };
-
-    db.Users.Add(user);
-    await db.SaveChangesAsync();
-
-    var token = GenerateJwt(user, keyBytes);
-    var refreshToken = GenerateRefreshToken();
-
-    user.RefreshToken = refreshToken;
-    user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
-    await db.SaveChangesAsync();
-
-    return Results.Ok(new LoginResponse(token, refreshToken, 3600));
-});
-
-authGroup.MapPost("/login", async (LoginRequest req, GameDbContext db) =>
-{
-    var user = await db.Users.FirstOrDefaultAsync(u => u.Username == req.Username);
-    if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
-        return Results.Unauthorized();
-
-    var token = GenerateJwt(user, keyBytes);
-    var refreshToken = GenerateRefreshToken();
-
-    user.RefreshToken = refreshToken;
-    user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
-    await db.SaveChangesAsync();
-
-    return Results.Ok(new LoginResponse(token, refreshToken, 3600));
-});
-
-authGroup.MapPost("/refresh", async (RefreshRequest req, GameDbContext db) =>
-{
-    var user = await db.Users.FirstOrDefaultAsync(u => u.RefreshToken == req.RefreshToken);
-    if (user is null || user.RefreshTokenExpiry < DateTime.UtcNow)
-        return Results.Unauthorized();
-
-    var newToken = GenerateJwt(user, keyBytes);
-    var newRefreshToken = GenerateRefreshToken();
-
-    user.RefreshToken = newRefreshToken;
-    user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
-    await db.SaveChangesAsync();
-
-    return Results.Ok(new LoginResponse(newToken, newRefreshToken, 3600));
-});
-
-authGroup.MapPost("/logout", [Authorize] async (HttpContext ctx, GameDbContext db) =>
-{
-    var id = int.Parse(ctx.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-    var user = await db.Users.FindAsync(id);
-    if (user != null)
-    {
-        user.RefreshToken = null;
-        user.RefreshTokenExpiry = null;
-        await db.SaveChangesAsync();
-    }
-
-    return Results.Ok();
-});
-
-authGroup.MapPost("/change-password", [Authorize]
-    async (ChangePasswordRequest req, HttpContext ctx, GameDbContext db) =>
-    {
-        var id = int.Parse(ctx.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-        var user = await db.Users.FindAsync(id);
-
-        if (user is null || !BCrypt.Net.BCrypt.Verify(req.OldPassword, user.PasswordHash))
-            return Results.BadRequest("Invalid old password");
-
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
-        await db.SaveChangesAsync();
-        return Results.Ok("Password changed");
-    });
+// FIX: Group Identity endpoints under /auth to match your .http file
+app.MapGroup("/auth").MapIdentityApi<ApplicationUser>();
 
 var gameGroup = app.MapGroup("/game").RequireAuthorization();
 
 gameGroup.MapGet("/me", async (HttpContext ctx, GameDbContext db) =>
 {
-    var userId = int.Parse(ctx.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+    var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (userId is null) return Results.Unauthorized();
 
-    var profile = await db.PlayerProfiles
-        .AsNoTracking()
-        .Include(p => p.User)
-        .FirstOrDefaultAsync(p => p.UserId == userId);
+    var profile = await db.PlayerProfiles.FirstOrDefaultAsync(p => p.UserId == userId);
 
-    if (profile is null) return Results.NotFound("Profile not found");
-
-    return Results.Ok(new PlayerProfileResponse(
-            profile.UserId,
-            profile.User.Username,
-            profile.Coins
-        )
-    );
+    // FIX: Lazy Create Profile if it doesn't exist yet (because Register only creates the User)
+    if (profile is null)
+    {
+        profile = new PlayerProfile { UserId = userId, Coins = 100 };
+        db.PlayerProfiles.Add(profile);
+        await db.SaveChangesAsync();
+    }
+    
+    return Results.Ok(new PlayerProfileResponse(profile.UserId, profile.Coins));
 });
 
 gameGroup.MapPost("/coins/transaction", async (UpdateCoinRequest req, HttpContext ctx, GameDbContext db) =>
 {
-    var userId = int.Parse(ctx.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-
+    var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
     var profile = await db.PlayerProfiles.FirstOrDefaultAsync(p => p.UserId == userId);
-    if (profile is null) return Results.NotFound();
+    
+    // Auto-create here too just in case
+    if (profile is null)
+    {
+        profile = new PlayerProfile { UserId = userId!, Coins = 100 };
+        db.PlayerProfiles.Add(profile);
+    }
 
-    if (req.Amount < 0 && profile.Coins + req.Amount < 0)
-        return Results.BadRequest("Insufficient funds");
+    if (req.Amount < 0 && profile.Coins + req.Amount < 0) return Results.BadRequest("Insufficient funds");
 
     profile.Coins += req.Amount;
-
     profile.Version = Guid.NewGuid();
-
-    try
-    {
-        await db.SaveChangesAsync();
-        return Results.Ok(new { NewBalance = profile.Coins });
-    }
-    catch (DbUpdateConcurrencyException)
-    {
-        return Results.Conflict("Transaction failed due to concurrent update.");
-    }
+    await db.SaveChangesAsync();
+    
+    return Results.Ok(new { NewBalance = profile.Coins });
 });
 
 var adminGroup = app.MapGroup("/admin");
 
 adminGroup.MapGet("/users", async (GameDbContext db) =>
 {
-    return await db.Users
-        .Select(u => new UserResponse(u.Id, u.Username, u.Email))
+    var users = await db.PlayerProfiles
+        .Include(p => p.User)
+        .Select(p => new 
+        { 
+            Id = p.Id, 
+            Username = p.User.UserName, 
+            Email = p.User.Email 
+        })
         .ToListAsync();
+
+    return Results.Ok(users);
 });
 
-adminGroup.MapDelete("/users/{id}", async (int id, GameDbContext db) =>
+adminGroup.MapDelete("/users/{id}", async (int id, GameDbContext db, UserManager<ApplicationUser> userManager) =>
 {
-    var user = await db.Users.FindAsync(id);
-    if (user is null) return Results.NotFound();
+    var profile = await db.PlayerProfiles
+        .Include(p => p.User)
+        .FirstOrDefaultAsync(p => p.Id == id);
 
-    db.Users.Remove(user);
-    await db.SaveChangesAsync();
+    if (profile is null) return Results.NotFound();
+
+    await userManager.DeleteAsync(profile.User);
+    
     return Results.Ok();
 });
 
 app.MapDefaultEndpoints();
 app.Run();
-
-static string GenerateJwt(User user, byte[] key)
-{
-    var tokenHandler = new JwtSecurityTokenHandler();
-    var tokenDescriptor = new SecurityTokenDescriptor
-    {
-        Subject = new ClaimsIdentity(new[]
-        {
-            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new Claim(ClaimTypes.Name, user.Username)
-        }),
-        Expires = DateTime.UtcNow.AddHours(1),
-        SigningCredentials =
-            new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
-    };
-    var token = tokenHandler.CreateToken(tokenDescriptor);
-    return tokenHandler.WriteToken(token);
-}
-
-static string GenerateRefreshToken()
-{
-    var randomNumber = new byte[32];
-    using var rng = RandomNumberGenerator.Create();
-    rng.GetBytes(randomNumber);
-    return Convert.ToBase64String(randomNumber);
-}

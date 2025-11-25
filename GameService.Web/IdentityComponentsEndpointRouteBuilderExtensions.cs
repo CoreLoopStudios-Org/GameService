@@ -1,6 +1,5 @@
 using System.Security.Claims;
-using GameService.Web.Data;
-using Microsoft.AspNetCore.Authentication;
+using GameService.ServiceDefaults.Data;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,8 +13,7 @@ public static class IdentityComponentsEndpointRouteBuilderExtensions
 
         group.MapPost("/Logout", async (
             ClaimsPrincipal user,
-            SignInManager<ApplicationUser> signInManager,
-            [FromForm] string returnUrl) =>
+            SignInManager<ApplicationUser> signInManager, [FromForm] string returnUrl) =>
         {
             await signInManager.SignOutAsync();
             return TypedResults.LocalRedirect($"~/{returnUrl}");

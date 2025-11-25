@@ -1,16 +1,20 @@
+using GameService.ServiceDefaults.Data;
 using GameService.Web;
 using GameService.Web.Components;
-using GameService.Web.Data;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddRedisOutputCache("cache");
 
-builder.AddNpgsqlDbContext<ApplicationDbContext>("postgresdb");
+builder.Services.AddHttpClient<GameApiClient>(client =>
+{
+    client.BaseAddress = new Uri("https+http://apiservice"); 
+});
+
+builder.AddNpgsqlDbContext<GameDbContext>("postgresdb");
 
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityUserAccessor>();
@@ -25,28 +29,14 @@ builder.Services.AddAuthentication(options =>
     .AddIdentityCookies();
 
 builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = true)
-    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddEntityFrameworkStores<GameDbContext>()
     .AddSignInManager()
     .AddDefaultTokenProviders();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-builder.Services.AddHttpClient<GameApiClient>(client =>
-    {
-        client.BaseAddress = new("https+http://apiservice");
-    });
-
 var app = builder.Build();
-
-if (app.Environment.IsDevelopment())
-{
-    using (var scope = app.Services.CreateScope())
-    {
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        await db.Database.EnsureCreatedAsync();
-    }
-}
 
 if (!app.Environment.IsDevelopment())
 {
@@ -63,7 +53,6 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.MapAdditionalIdentityEndpoints();
-
 app.MapDefaultEndpoints();
 
 app.Run();

@@ -1,5 +1,5 @@
 using System.Security.Claims;
-using GameService.Web.Data;
+using GameService.ServiceDefaults.Data;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Server;
 using Microsoft.AspNetCore.Identity;

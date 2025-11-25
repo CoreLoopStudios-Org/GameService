@@ -1,61 +1,46 @@
-# ==========================================
-# 🎮 GAME SERVICE API SUITE (v2 Economy)
-# ==========================================
-# Best Dotnet Dev Approved
-# Usage: Run requests sequentially to test the full flow.
-
-# ⚙️ Configuration
 @hostname = localhost
 @port = 5525
 @host = http://{{hostname}}:{{port}}
 @contentType = application/json
 
-# 👤 Test User Credentials
+
 @username = gold_farmer_01
 @email = farmer@gameservice.com
 @password = GoldPlz!123
-
-# ==========================================
-# 🏥 SYSTEM HEALTH
-# ==========================================
 
 ### Health Check
 GET {{host}}/health
 
 ###
 
-# ==========================================
-# 🔐 AUTHENTICATION FLOW
-# ==========================================
 
-### Register New User (Auto-Creates Profile)
-# Expected: 200 OK
+### Register New User
+# Expected: 200 OK (Body is empty on success)
 POST {{host}}/auth/register
 Content-Type: {{contentType}}
 
 {
-  "username": "{{username}}",
   "email": "{{email}}",
   "password": "{{password}}"
 }
 
 > {%
     if (response.status === 200) {
-        client.log("✅ User Registered: " + response.body.username);
-    } else if (response.status === 409) {
-        client.log("⚠️ User already exists (Expected if running twice)");
+        client.log("✅ User Registered Successfully");
+    } else if (response.status === 400) {
+        client.log("⚠️ Validation Error (or user exists): " + JSON.stringify(response.body));
     }
 %}
 
 ###
 
 ### 2️⃣ Login (Get Tokens)
-# Expected: 200 OK
+# Fix: Use "email" key, not "username"
 POST {{host}}/auth/login
 Content-Type: {{contentType}}
 
 {
-  "username": "{{username}}",
+  "email": "{{email}}",
   "password": "{{password}}"
 }
 
@@ -64,31 +49,27 @@ Content-Type: {{contentType}}
         client.global.set("auth_token", response.body.accessToken);
         client.log("✅ Login Success");
     } else {
-        client.log("❌ Login Failed");
+        client.log("❌ Login Failed: " + response.status);
     }
 %}
 
 ###
 
-# ==========================================
-# 💰 ECONOMY & GAMEPLAY
-# ==========================================
 
-### 3️⃣ Get My Profile (Verify Starter Pack)
-# Expected: 200 OK, Coins = 100
+### 3️⃣ Get My Profile (Lazy Creates Profile if missing)
 GET {{host}}/game/me
 Authorization: Bearer {{auth_token}}
 
 > {%
-    client.test("Has Starter Pack", function() {
+    client.test("Client Ok", function() {
         client.assert(response.status === 200, "Response status is not 200");
+        client.assert(response.body.coins === 100, "Expected default coins 100");
     });
 %}
 
 ###
 
-### 4️⃣ Earn Coins (Looting)
-# Expected: 200 OK, New Balance = 150
+### 4️⃣ Earn Coins
 POST {{host}}/game/coins/transaction
 Authorization: Bearer {{auth_token}}
 Content-Type: {{contentType}}
@@ -99,58 +80,6 @@ Content-Type: {{contentType}}
 
 > {%
     client.test("Balance Increased", function() {
-        client.assert(response.body.newBalance === 150, "Expected balance 150, got " + response.body.newBalance);
+        client.assert(response.body.newBalance === 150, "Expected balance 150");
     });
 %}
-
-###
-
-### 5️⃣ Spend Coins (Buying Item)
-# Expected: 200 OK, New Balance = 10
-POST {{host}}/game/coins/transaction
-Authorization: Bearer {{auth_token}}
-Content-Type: {{contentType}}
-
-{
-  "amount": -140
-}
-
-> {%
-    client.test("Balance Decreased", function() {
-        client.assert(response.body.newBalance === 10, "Expected balance 10, got " + response.body.newBalance);
-    });
-%}
-
-###
-
-### 6️⃣ Overspending Check (Security)
-# Expected: 400 Bad Request (Insufficient funds)
-POST {{host}}/game/coins/transaction
-Authorization: Bearer {{auth_token}}
-Content-Type: {{contentType}}
-
-{
-  "amount": -20
-}
-
-> {%
-    client.test("Prevent Overspending", function() {
-        client.assert(response.status === 400, "Should return 400 for insufficient funds");
-    });
-%}
-
-###
-
-# ==========================================
-# 👑 ADMIN / USER MANAGEMENT
-# ==========================================
-
-### Get All Users
-GET {{host}}/admin/users
-Authorization: Bearer {{auth_token}}
-
-###
-
-### Delete User (Clean Up)
-DELETE {{host}}/admin/users/1
-Authorization: Bearer {{auth_token}}
