@@ -1,29 +1,21 @@
+using System.Net.Http.Json;
+
 namespace GameService.Web;
 
-public class WeatherApiClient(HttpClient httpClient)
+public class GameApiClient(HttpClient httpClient)
 {
-    public async Task<WeatherForecast[]> GetWeatherAsync(int maxItems = 10, CancellationToken cancellationToken = default)
+    public async Task<UserResponse[]> GetUsersAsync(CancellationToken cancellationToken = default)
     {
-        List<WeatherForecast>? forecasts = null;
+        // In a real app, you'd handle auth headers here
+        var users = await httpClient.GetFromJsonAsync<UserResponse[]>("/admin/users", cancellationToken);
+        return users ?? [];
+    }
 
-        await foreach (var forecast in httpClient.GetFromJsonAsAsyncEnumerable<WeatherForecast>("/weatherforecast", cancellationToken))
-        {
-            if (forecasts?.Count >= maxItems)
-            {
-                break;
-            }
-            if (forecast is not null)
-            {
-                forecasts ??= [];
-                forecasts.Add(forecast);
-            }
-        }
-
-        return forecasts?.ToArray() ?? [];
+    public async Task DeleteUserAsync(int id, CancellationToken cancellationToken = default)
+    {
+        await httpClient.DeleteAsync($"/admin/users/{id}", cancellationToken);
     }
 }
 
-public record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+// Reuse the DTO locally or reference a shared library
+public record UserResponse(int Id, string Username, string Email);

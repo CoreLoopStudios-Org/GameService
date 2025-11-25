@@ -1,7 +1,69 @@
 ﻿@page "/"
+@using GameService.Web
+@inject GameApiClient GameApi
+@attribute [StreamRendering(true)]
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Admin Dashboard</PageTitle>
 
-<h1>Hello, world!</h1>
+<h1>Player Management</h1>
 
-Welcome to your new app.
+<p>Admin panel to view and manage game users.</p>
+
+@if (users == null)
+{
+    <p><em>Loading users...</em></p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead class="table-dark">
+            <tr>
+                <th>ID</th>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var user in users)
+            {
+                <tr>
+                    <td>@user.Id</td>
+                    <td>@user.Username</td>
+                    <td>@user.Email</td>
+                    <td>
+                        <button class="btn btn-danger btn-sm" @onclick="() => DeleteUser(user.Id)">
+                            Delete
+                        </button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private UserResponse[]? users;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsers();
+    }
+
+    private async Task LoadUsers()
+    {
+        users = await GameApi.GetUsersAsync();
+    }
+
+    private async Task DeleteUser(int id)
+    {
+        bool confirmed = true; // In real app, show JS confirm or modal
+        if (confirmed)
+        {
+            await GameApi.DeleteUserAsync(id);
+            await LoadUsers(); // Refresh list
+        }
+    }
+}
