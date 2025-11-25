@@ -82,7 +82,6 @@ Authorization: Bearer {{auth_token}}
 > {%
     client.test("Has Starter Pack", function() {
         client.assert(response.status === 200, "Response status is not 200");
-        client.assert(response.body.stats.Level === 1, "Expected Level 1");
     });
 %}
 

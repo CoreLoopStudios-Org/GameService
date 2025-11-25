@@ -27,19 +27,6 @@ public class PlayerProfile
 
     public long Coins { get; set; }
 
-    public Dictionary<string, object> Stats { get; set; } = new();
-
-    // FIXED: Use Guid for universal optimistic concurrency
     [ConcurrencyCheck]
     public Guid Version { get; set; } = Guid.NewGuid();
 }
-
-// DTOs
-public record struct RegisterRequest(string Username, string Email, string Password);
-public record struct LoginRequest(string Username, string Password);
-public record struct LoginResponse(string AccessToken, string RefreshToken, int ExpiresIn);
-public record struct RefreshRequest(string RefreshToken);
-public record struct ChangePasswordRequest(string OldPassword, string NewPassword);
-public record struct UserResponse(int Id, string Username, string Email);
-public record struct PlayerProfileResponse(int UserId, string Username, long Coins, Dictionary<string, object> Stats);
-public record struct UpdateCoinRequest(long Amount);

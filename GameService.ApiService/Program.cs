@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using GameService.ApiService;
 using GameService.ApiService.Data;
+using GameService.ApiService.DTOs;
 using GameService.ApiService.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -47,17 +48,14 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<GameDbContext>();
-    // Note: If you get DB errors, delete the old volume!
     db.Database.EnsureCreated();
 }
 
 app.UseAuthentication();
 app.UseAuthorization();
 
-// --- AUTH GROUP ---
 var authGroup = app.MapGroup("/auth");
 
-// 1. Register (FIXED: Returns Token)
 authGroup.MapPost("/register", async (RegisterRequest req, GameDbContext db) =>
 {
     if (await db.Users.AnyAsync(u => u.Username == req.Username || u.Email == req.Email))
@@ -68,18 +66,16 @@ authGroup.MapPost("/register", async (RegisterRequest req, GameDbContext db) =>
         Username = req.Username,
         Email = req.Email,
         PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
-        Profile = new PlayerProfile 
-        { 
-            Coins = 100, 
-            Stats = new Dictionary<string, object> { { "Level", 1 } },
-            Version = Guid.NewGuid() // Explicit Init
+        Profile = new PlayerProfile
+        {
+            Coins = 100,
+            Version = Guid.NewGuid()
         }
     };
 
     db.Users.Add(user);
     await db.SaveChangesAsync();
 
-    // Generate Tokens immediately
     var token = GenerateJwt(user, keyBytes);
     var refreshToken = GenerateRefreshToken();
 
@@ -90,7 +86,6 @@ authGroup.MapPost("/register", async (RegisterRequest req, GameDbContext db) =>
     return Results.Ok(new LoginResponse(token, refreshToken, 3600));
 });
 
-// 2. Login
 authGroup.MapPost("/login", async (LoginRequest req, GameDbContext db) =>
 {
     var user = await db.Users.FirstOrDefaultAsync(u => u.Username == req.Username);
@@ -107,7 +102,6 @@ authGroup.MapPost("/login", async (LoginRequest req, GameDbContext db) =>
     return Results.Ok(new LoginResponse(token, refreshToken, 3600));
 });
 
-// 3. Refresh Token
 authGroup.MapPost("/refresh", async (RefreshRequest req, GameDbContext db) =>
 {
     var user = await db.Users.FirstOrDefaultAsync(u => u.RefreshToken == req.RefreshToken);
@@ -124,7 +118,6 @@ authGroup.MapPost("/refresh", async (RefreshRequest req, GameDbContext db) =>
     return Results.Ok(new LoginResponse(newToken, newRefreshToken, 3600));
 });
 
-// 4. Logout
 authGroup.MapPost("/logout", [Authorize] async (HttpContext ctx, GameDbContext db) =>
 {
     var id = int.Parse(ctx.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
@@ -135,30 +128,30 @@ authGroup.MapPost("/logout", [Authorize] async (HttpContext ctx, GameDbContext d
         user.RefreshTokenExpiry = null;
         await db.SaveChangesAsync();
     }
+
     return Results.Ok();
 });
 
-// 5. Change Password
-authGroup.MapPost("/change-password", [Authorize] async (ChangePasswordRequest req, HttpContext ctx, GameDbContext db) =>
-{
-    var id = int.Parse(ctx.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-    var user = await db.Users.FindAsync(id);
+authGroup.MapPost("/change-password", [Authorize]
+    async (ChangePasswordRequest req, HttpContext ctx, GameDbContext db) =>
+    {
+        var id = int.Parse(ctx.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        var user = await db.Users.FindAsync(id);
 
-    if (user is null || !BCrypt.Net.BCrypt.Verify(req.OldPassword, user.PasswordHash))
-        return Results.BadRequest("Invalid old password");
+        if (user is null || !BCrypt.Net.BCrypt.Verify(req.OldPassword, user.PasswordHash))
+            return Results.BadRequest("Invalid old password");
 
-    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
-    await db.SaveChangesAsync();
-    return Results.Ok("Password changed");
-});
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
+        await db.SaveChangesAsync();
+        return Results.Ok("Password changed");
+    });
 
-// --- GAME GROUP ---
 var gameGroup = app.MapGroup("/game").RequireAuthorization();
 
 gameGroup.MapGet("/me", async (HttpContext ctx, GameDbContext db) =>
 {
     var userId = int.Parse(ctx.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-    
+
     var profile = await db.PlayerProfiles
         .AsNoTracking()
         .Include(p => p.User)
@@ -167,17 +160,17 @@ gameGroup.MapGet("/me", async (HttpContext ctx, GameDbContext db) =>
     if (profile is null) return Results.NotFound("Profile not found");
 
     return Results.Ok(new PlayerProfileResponse(
-        profile.UserId, 
-        profile.User.Username, 
-        profile.Coins, 
-        profile.Stats));
+            profile.UserId,
+            profile.User.Username,
+            profile.Coins
+        )
+    );
 });
 
-// Transaction Endpoint (FIXED: Concurrency Handling)
 gameGroup.MapPost("/coins/transaction", async (UpdateCoinRequest req, HttpContext ctx, GameDbContext db) =>
 {
     var userId = int.Parse(ctx.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-    
+
     var profile = await db.PlayerProfiles.FirstOrDefaultAsync(p => p.UserId == userId);
     if (profile is null) return Results.NotFound();
 
@@ -185,8 +178,7 @@ gameGroup.MapPost("/coins/transaction", async (UpdateCoinRequest req, HttpContex
         return Results.BadRequest("Insufficient funds");
 
     profile.Coins += req.Amount;
-    
-    // Rotate the Version GUID to trigger Optimistic Concurrency Check
+
     profile.Version = Guid.NewGuid();
 
     try
@@ -200,7 +192,6 @@ gameGroup.MapPost("/coins/transaction", async (UpdateCoinRequest req, HttpContex
     }
 });
 
-// --- ADMIN GROUP ---
 var adminGroup = app.MapGroup("/admin");
 
 adminGroup.MapGet("/users", async (GameDbContext db) =>
@@ -214,7 +205,7 @@ adminGroup.MapDelete("/users/{id}", async (int id, GameDbContext db) =>
 {
     var user = await db.Users.FindAsync(id);
     if (user is null) return Results.NotFound();
-    
+
     db.Users.Remove(user);
     await db.SaveChangesAsync();
     return Results.Ok();
@@ -223,7 +214,6 @@ adminGroup.MapDelete("/users/{id}", async (int id, GameDbContext db) =>
 app.MapDefaultEndpoints();
 app.Run();
 
-// Helpers
 static string GenerateJwt(User user, byte[] key)
 {
     var tokenHandler = new JwtSecurityTokenHandler();
@@ -235,7 +225,8 @@ static string GenerateJwt(User user, byte[] key)
             new Claim(ClaimTypes.Name, user.Username)
         }),
         Expires = DateTime.UtcNow.AddHours(1),
-        SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+        SigningCredentials =
+            new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
     };
     var token = tokenHandler.CreateToken(tokenDescriptor);
     return tokenHandler.WriteToken(token);

@@ -24,11 +24,5 @@ public class GameDbContext(DbContextOptions<GameDbContext> options) : DbContext(
                 .HasForeignKey<PlayerProfile>(p => p.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
-
-        modelBuilder.Entity<PlayerProfile>(b =>
-        {
-            b.OwnsOne(p => p.Stats, cb => { cb.ToJson(); });
-            // FIXED: Removed IsRowVersion(). The [ConcurrencyCheck] on the model is enough.
-        });
     }
 }

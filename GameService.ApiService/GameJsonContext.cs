@@ -1,5 +1,5 @@
 using System.Text.Json.Serialization;
-using GameService.ApiService.Models;
+using GameService.ApiService.DTOs;
 
 namespace GameService.ApiService;
 
@@ -12,7 +12,6 @@ namespace GameService.ApiService;
 [JsonSerializable(typeof(List<UserResponse>))]
 [JsonSerializable(typeof(PlayerProfileResponse))]
 [JsonSerializable(typeof(UpdateCoinRequest))]
-[JsonSerializable(typeof(Dictionary<string, object>))] 
 [JsonSerializable(typeof(Microsoft.AspNetCore.Mvc.ProblemDetails))]
 internal partial class GameJsonContext : JsonSerializerContext
 {
