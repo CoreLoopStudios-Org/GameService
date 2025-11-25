@@ -1,8 +1,8 @@
 # ==========================================
-# 🎮 GAME SERVICE API SUITE
+# 🎮 GAME SERVICE API SUITE (v2 Economy)
 # ==========================================
 # Best Dotnet Dev Approved
-# Usage: Run "Register", then "Login". Tokens are auto-saved.
+# Usage: Run requests sequentially to test the full flow.
 
 # ⚙️ Configuration
 @hostname = localhost
@@ -11,10 +11,9 @@
 @contentType = application/json
 
 # 👤 Test User Credentials
-@username = pro_gamer_99
-@email = progamer@gameservice.com
-@password = Hunter2!Secure
-@newPassword = Hunter3!MoreSecure
+@username = gold_farmer_01
+@email = farmer@gameservice.com
+@password = GoldPlz!123
 
 # ==========================================
 # 🏥 SYSTEM HEALTH
@@ -23,17 +22,14 @@
 ### Health Check
 GET {{host}}/health
 
-### Liveness Check
-GET {{host}}/alive
-
 ###
 
 # ==========================================
 # 🔐 AUTHENTICATION FLOW
 # ==========================================
 
-### 1️⃣ Register New User
-# Expected: 200 OK with User details
+### Register New User (Auto-Creates Profile)
+# Expected: 200 OK
 POST {{host}}/auth/register
 Content-Type: {{contentType}}
 
@@ -54,7 +50,7 @@ Content-Type: {{contentType}}
 ###
 
 ### 2️⃣ Login (Get Tokens)
-# Expected: 200 OK with Access & Refresh Tokens
+# Expected: 200 OK
 POST {{host}}/auth/login
 Content-Type: {{contentType}}
 
@@ -65,56 +61,84 @@ Content-Type: {{contentType}}
 
 > {%
     if (response.status === 200) {
-        // 💾 Smart Save: Capture both tokens
         client.global.set("auth_token", response.body.accessToken);
-        client.global.set("refresh_token", response.body.refreshToken);
-
         client.log("✅ Login Success");
-        client.log("🔑 Access Token: " + response.body.accessToken.substring(0, 15) + "...");
-        client.log("🔄 Refresh Token: " + response.body.refreshToken.substring(0, 15) + "...");
     } else {
-        client.log("❌ Login Failed: " + response.status);
+        client.log("❌ Login Failed");
     }
 %}
 
 ###
 
-### 3️⃣ Refresh Token
-# Use this when Access Token expires
-POST {{host}}/auth/refresh
+# ==========================================
+# 💰 ECONOMY & GAMEPLAY
+# ==========================================
+
+### 3️⃣ Get My Profile (Verify Starter Pack)
+# Expected: 200 OK, Coins = 100
+GET {{host}}/game/me
+Authorization: Bearer {{auth_token}}
+
+> {%
+    client.test("Has Starter Pack", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+        client.assert(response.body.stats.Level === 1, "Expected Level 1");
+    });
+%}
+
+###
+
+### 4️⃣ Earn Coins (Looting)
+# Expected: 200 OK, New Balance = 150
+POST {{host}}/game/coins/transaction
+Authorization: Bearer {{auth_token}}
 Content-Type: {{contentType}}
 
 {
-  "refreshToken": "{{refresh_token}}"
+  "amount": 50
 }
 
 > {%
-    if (response.status === 200) {
-        client.global.set("auth_token", response.body.accessToken);
-        client.global.set("refresh_token", response.body.refreshToken);
-        client.log("✅ Tokens Refreshed Successfully");
-    }
+    client.test("Balance Increased", function() {
+        client.assert(response.body.newBalance === 150, "Expected balance 150, got " + response.body.newBalance);
+    });
 %}
 
 ###
 
-### 4️⃣ Change Password
-# Requires: Valid Bearer Token
-POST {{host}}/auth/change-password
+### 5️⃣ Spend Coins (Buying Item)
+# Expected: 200 OK, New Balance = 10
+POST {{host}}/game/coins/transaction
 Authorization: Bearer {{auth_token}}
 Content-Type: {{contentType}}
 
 {
-  "oldPassword": "{{password}}",
-  "newPassword": "{{newPassword}}"
+  "amount": -140
 }
+
+> {%
+    client.test("Balance Decreased", function() {
+        client.assert(response.body.newBalance === 10, "Expected balance 10, got " + response.body.newBalance);
+    });
+%}
 
 ###
 
-### 5️⃣ Logout (Revoke Refresh Token)
-POST {{host}}/auth/logout
+### 6️⃣ Overspending Check (Security)
+# Expected: 400 Bad Request (Insufficient funds)
+POST {{host}}/game/coins/transaction
 Authorization: Bearer {{auth_token}}
 Content-Type: {{contentType}}
+
+{
+  "amount": -20
+}
+
+> {%
+    client.test("Prevent Overspending", function() {
+        client.assert(response.status === 400, "Should return 400 for insufficient funds");
+    });
+%}
 
 ###
 
@@ -123,36 +147,11 @@ Content-Type: {{contentType}}
 # ==========================================
 
 ### Get All Users
-# Currently public in dev, implies Admin rights
 GET {{host}}/admin/users
 Authorization: Bearer {{auth_token}}
 
 ###
 
-### Delete User
-# Replace '1' with an actual ID from the Get All Users list
+### Delete User (Clean Up)
 DELETE {{host}}/admin/users/1
 Authorization: Bearer {{auth_token}}
-
-###
-
-# ==========================================
-# 🛡️ SECURITY & ERROR HANDLING
-# ==========================================
-
-### Test: Login with Wrong Password
-POST {{host}}/auth/login
-Content-Type: {{contentType}}
-
-{
-  "username": "{{username}}",
-  "password": "WrongPassword123"
-}
-
-> {%
-    if (response.status === 401) {
-        client.log("✅ Security Check Passed: 401 Unauthorized received");
-    } else {
-        client.log("❌ Security Check Failed: Expected 401");
-    }
-%}

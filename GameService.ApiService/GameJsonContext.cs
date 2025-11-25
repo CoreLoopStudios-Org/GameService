@@ -10,6 +10,9 @@ namespace GameService.ApiService;
 [JsonSerializable(typeof(ChangePasswordRequest))]
 [JsonSerializable(typeof(UserResponse))]
 [JsonSerializable(typeof(List<UserResponse>))]
+[JsonSerializable(typeof(PlayerProfileResponse))]
+[JsonSerializable(typeof(UpdateCoinRequest))]
+[JsonSerializable(typeof(Dictionary<string, object>))] 
 [JsonSerializable(typeof(Microsoft.AspNetCore.Mvc.ProblemDetails))]
 internal partial class GameJsonContext : JsonSerializerContext
 {

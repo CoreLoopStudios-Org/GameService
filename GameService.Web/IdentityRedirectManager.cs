@@ -17,14 +17,12 @@ public class IdentityRedirectManager(NavigationManager navigationManager)
     public void RedirectTo(string? uri)
     {
         uri ??= "";
-        // Prevent open redirects.
         if (!Uri.IsWellFormedUriString(uri, UriKind.Relative))
         {
             uri = navigationManager.ToBaseRelativePath(uri);
         }
         navigationManager.NavigateTo(uri);
-        
-        // Add this line to satisfy [DoesNotReturn]
+
         throw new InvalidOperationException($"{nameof(IdentityRedirectManager)} failed to terminate execution.");
     }
 }

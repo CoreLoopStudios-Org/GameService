@@ -48,13 +48,12 @@
 
 @code {
     [SupplyParameterFromForm]
-    private InputModel Input { get; set; } = default!; // Remove 'new()'
+    private InputModel Input { get; set; } = default!;
 
     private string? errorMessage;
 
     protected override void OnInitialized()
     {
-        // Ensure Input is not null for the initial page load
         Input ??= new();
     }
 
@@ -71,7 +70,6 @@
         }
     }
 
-    // Fast track for testing
     private async Task CreateTestUser()
     {
         var user = new ApplicationUser { UserName = "test@example.com", Email = "test@example.com", EmailConfirmed = true };

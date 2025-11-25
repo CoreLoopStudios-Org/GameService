@@ -6,6 +6,7 @@ namespace GameService.ApiService.Data;
 public class GameDbContext(DbContextOptions<GameDbContext> options) : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
+    public DbSet<PlayerProfile> PlayerProfiles => Set<PlayerProfile>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -17,6 +18,17 @@ public class GameDbContext(DbContextOptions<GameDbContext> options) : DbContext(
             b.HasIndex(u => u.Email).IsUnique();
             b.Property(u => u.Username).HasMaxLength(50);
             b.Property(u => u.Email).HasMaxLength(100);
+            
+            b.HasOne(u => u.Profile)
+                .WithOne(p => p.User)
+                .HasForeignKey<PlayerProfile>(p => p.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PlayerProfile>(b =>
+        {
+            b.OwnsOne(p => p.Stats, cb => { cb.ToJson(); });
+            // FIXED: Removed IsRowVersion(). The [ConcurrencyCheck] on the model is enough.
         });
     }
 }

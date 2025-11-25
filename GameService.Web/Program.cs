@@ -1,20 +1,17 @@
 using GameService.Web;
 using GameService.Web.Components;
 using GameService.Web.Data;
-using Microsoft.AspNetCore.Components.Authorization; // Add this
-using Microsoft.AspNetCore.Identity; // Add this
-using Microsoft.EntityFrameworkCore; // Add this
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add service defaults & Aspire client integrations.
 builder.AddServiceDefaults();
 builder.AddRedisOutputCache("cache");
 
-// 1. Add Postgres Context for Identity (Uses Aspire Service Discovery)
 builder.AddNpgsqlDbContext<ApplicationDbContext>("postgresdb");
 
-// 2. Configure Identity
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityUserAccessor>();
 builder.Services.AddScoped<IdentityRedirectManager>();
@@ -42,8 +39,6 @@ builder.Services.AddHttpClient<GameApiClient>(client =>
 
 var app = builder.Build();
 
-// 3. AUTOMATIC MIGRATION (Smart Solution for Dev)
-// In production, use a separate migration bundle/job.
 if (app.Environment.IsDevelopment())
 {
     using (var scope = app.Services.CreateScope())
@@ -67,7 +62,6 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-// 4. Add Identity Endpoints (Smart way to handle login/register API)
 app.MapAdditionalIdentityEndpoints();
 
 app.MapDefaultEndpoints();

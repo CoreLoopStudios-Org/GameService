@@ -60,11 +60,11 @@ else
 
     private async Task DeleteUser(int id)
     {
-        bool confirmed = true; // In real app, show JS confirm or modal
+        bool confirmed = true;
         if (confirmed)
         {
             await GameApi.DeleteUserAsync(id);
-            await LoadUsers(); // Refresh list
+            await LoadUsers();
         }
     }
 }
