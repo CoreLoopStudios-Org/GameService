@@ -4,17 +4,21 @@
 @using Microsoft.EntityFrameworkCore
 @using GameService.ServiceDefaults.Data
 @using System.Security.Claims
+@using GameService.ServiceDefaults.Messages
+@using GameService.Web.Services
 
 @attribute [Authorize]
 @rendermode InteractiveServer
+@implements IDisposable
 
 @inject GameDbContext Db
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthStateProvider
+@inject PlayerUpdateNotifier Notifier
 
 <PageTitle>Player Management</PageTitle>
 
-<h1>Player Management</h1>
+<h1>Player Management <span class="badge bg-success" style="font-size: 0.5em; vertical-align: middle">Live</span></h1>
 <p>Manage registered players and admins.</p>
 
 @if (users == null)
@@ -38,7 +42,9 @@ else
             @foreach (var user in users)
             {
                 var isMe = user.UserId == currentUserId;
-                <tr class="@(isMe ? "table-info" : "")">
+                var rowClass = isMe ? "table-info" : (updatedUserIds.Contains(user.UserId) ? "table-warning" : "");
+                
+                <tr class="@rowClass" @key="user.UserId">
                     <td>@user.ProfileId</td>
                     <td>@user.Username @(isMe ? "(You)" : "")</td>
                     <td>@user.Email</td>
@@ -61,6 +67,7 @@ else
 @code {
     private List<UserViewModel>? users;
     private string? currentUserId;
+    private HashSet<string> updatedUserIds = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -68,15 +75,71 @@ else
         currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
         
         await LoadUsers();
+
+        Notifier.OnPlayerUpdated += HandleUpdate;
+    }
+
+    private void HandleUpdate(PlayerUpdatedMessage msg)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            if (users is null) return;
+
+            var userIndex = users.FindIndex(u => u.UserId == msg.UserId);
+            
+            if (userIndex != -1)
+            {
+                // UPDATE EXISTING USER
+                var old = users[userIndex];
+                users[userIndex] = old with { Coins = msg.NewCoins };
+            }
+            else
+            {
+                // ADD NEW USER (Live!)
+                // If the message contains the details, we add them immediately.
+                // If details are missing (legacy message), we might need to fetch, 
+                // but our API now sends them.
+                if (!string.IsNullOrEmpty(msg.Username))
+                {
+                    // We might not have the Profile ID in the message, 
+                    // usually for the admin table we need it for the Delete button.
+                    // For now, we can try to guess or fetch. 
+                    // Ideally, the message should have ProfileId too, 
+                    // but to keep it simple, let's just create a dummy ID or reload the list
+                    // if strictly necessary. 
+                    // BETTER: Let's trust the data we have.
+                    
+                    var newUser = new UserViewModel(
+                        0, // ID unknown until refresh, but UI can render 0 or we can fetch.
+                        msg.UserId,
+                        msg.Username,
+                        msg.Email ?? "Unknown",
+                        msg.NewCoins
+                    );
+                    
+                    // Add to top of list
+                    users.Insert(0, newUser);
+                    
+                    // OPTIONAL: Reload fully to get the correct Profile ID for the delete button
+                    // await LoadUsers(); 
+                }
+            }
+
+            // Flash Animation
+            updatedUserIds.Add(msg.UserId);
+            StateHasChanged();
+
+            await Task.Delay(2000);
+            updatedUserIds.Remove(msg.UserId);
+            StateHasChanged();
+        });
     }
 
     private async Task LoadUsers()
     {
-        // FIX: OrderBy must happen BEFORE Select when projecting to a DTO/Record
-        // This ensures EF Core generates "ORDER BY Id" in SQL before transforming the result.
         users = await Db.PlayerProfiles
-            .AsNoTracking() // Performance: We don't need to track these for read-only display
-            .OrderBy(p => p.Id) 
+            .AsNoTracking()
+            .OrderBy(p => p.Id)
             .Select(p => new UserViewModel(
                 p.Id,
                 p.UserId,
@@ -89,16 +152,27 @@ else
 
     private async Task DeleteUser(int profileId)
     {
+        if (profileId == 0) 
+        {
+            // If we just added it live and didn't have ID, we can't delete yet.
+            // Force a reload to get IDs.
+            await LoadUsers();
+            return; 
+        }
+
         var profile = await Db.PlayerProfiles.Include(p => p.User).FirstOrDefaultAsync(p => p.Id == profileId);
         
         if (profile is not null)
         {
-            // Security check
             if (profile.UserId == currentUserId) return;
-
             await UserManager.DeleteAsync(profile.User);
             await LoadUsers();
         }
+    }
+
+    public void Dispose()
+    {
+        Notifier.OnPlayerUpdated -= HandleUpdate;
     }
 
     public record UserViewModel(int ProfileId, string UserId, string Username, string Email, long Coins);
