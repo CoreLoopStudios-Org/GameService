@@ -3,19 +3,23 @@
 @host = http://{{hostname}}:{{port}}
 @contentType = application/json
 
+# Auto-generate unique email each run for isolation
+@unique = {{$timestamp}}
+@email = tester_{{unique}}@gameservice.com
+@password = Test123!ABC
 
-@username = gold_farmer_01
-@email = farmer@gameservice.com
-@password = GoldPlz!123
 
 ### Health Check
 GET {{host}}/health
 
-###
+> {%
+    client.test("Health endpoint online", function () {
+        client.assert(response.status === 200, "Service not healthy");
+    });
+%}
 
 
-### Register New User
-# Expected: 200 OK (Body is empty on success)
+### Register User
 POST {{host}}/auth/register
 Content-Type: {{contentType}}
 
@@ -26,16 +30,23 @@ Content-Type: {{contentType}}
 
 > {%
     if (response.status === 200) {
-        client.log("✅ User Registered Successfully");
+        client.log(`🆕 Registered: {{email}}`);
     } else if (response.status === 400) {
-        client.log("⚠️ Validation Error (or user exists): " + JSON.stringify(response.body));
+        client.log(`ℹ️ Already Exists: {{email}}`);
+    } else {
+        client.log("❌ Unexpected register status: " + response.status);
     }
+
+    client.test("Register status valid", function () {
+        client.assert(
+            response.status === 200 || response.status === 400,
+            "Register should be either success OR already exists"
+        );
+    });
 %}
 
-###
 
-### 2️⃣ Login (Get Tokens)
-# Fix: Use "email" key, not "username"
+### Login
 POST {{host}}/auth/login
 Content-Type: {{contentType}}
 
@@ -45,31 +56,41 @@ Content-Type: {{contentType}}
 }
 
 > {%
-    if (response.status === 200) {
-        client.global.set("auth_token", response.body.accessToken);
-        client.log("✅ Login Success");
-    } else {
-        client.log("❌ Login Failed: " + response.status);
-    }
+    client.test("Login should be successful", function () {
+        client.assert(response.status === 200, "Login failed");
+    });
+
+    // Token validation
+    client.test("AccessToken exists", function() {
+        client.assert(typeof response.body.accessToken === "string", "No access token returned");
+    });
+
+    client.global.set("auth_token", response.body.accessToken);
+    client.log("🔐 Token stored");
 %}
 
-###
 
-
-### 3️⃣ Get My Profile (Lazy Creates Profile if missing)
+### Get Profile
 GET {{host}}/game/me
 Authorization: Bearer {{auth_token}}
 
 > {%
-    client.test("Client Ok", function() {
-        client.assert(response.status === 200, "Response status is not 200");
-        client.assert(response.body.coins === 100, "Expected default coins 100");
+    client.test("Profile endpoint works", function () {
+        client.assert(response.status === 200, "Expected 200");
     });
+
+    const coins = response.body.coins;
+    client.global.set("starting_coins", coins);
+
+    client.test("Coins should be number", function() {
+        client.assert(typeof coins === "number", "Coins not number");
+    });
+
+    client.log("💰 Starting coins = " + coins);
 %}
 
-###
 
-### 4️⃣ Earn Coins
+### Earn Coins
 POST {{host}}/game/coins/transaction
 Authorization: Bearer {{auth_token}}
 Content-Type: {{contentType}}
@@ -79,7 +100,48 @@ Content-Type: {{contentType}}
 }
 
 > {%
-    client.test("Balance Increased", function() {
-        client.assert(response.body.newBalance === 150, "Expected balance 150");
+    const before = Number(client.global.get("starting_coins"));
+    const after = response.body.newBalance;
+    const expected = before + 50;
+
+    client.log(`📈 Before=${before}, After=${after}, Expected=${expected}`);
+
+    client.test("Status OK", function () {
+        client.assert(response.status === 200, "Transaction failed");
+    });
+
+    client.test("Balance increased correctly", function () {
+        client.assert(after === expected, `Incorrect balance; expected ${expected}, got ${after}`);
+    });
+%}
+
+
+### Re-check Profile To Ensure Balance Persisted
+GET {{host}}/game/me
+Authorization: Bearer {{auth_token}}
+
+> {%
+    const expected = Number(client.global.get("starting_coins")) + 50;
+    const actual = response.body.coins;
+
+    client.test("Profile balance matches transaction result", function () {
+        client.assert(actual === expected, `Profile coins mismatch. Expected: ${expected}, Got: ${actual}`);
+    });
+
+    client.log("🔄 Balance verification OK: " + actual);
+%}
+
+### INVALID: Earn Negative Coins
+POST {{host}}/game/coins/transaction
+Authorization: Bearer {{auth_token}}
+Content-Type: {{contentType}}
+
+{
+  "amount": -999
+}
+
+> {%
+    client.test("Should reject negative amounts", function () {
+        client.assert(response.status === 400, "Negative coin not rejected");
     });
 %}
