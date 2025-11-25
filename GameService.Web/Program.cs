@@ -5,13 +5,11 @@ using GameService.Web.Components;
 using GameService.Web.Workers;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore; // Required for EnsureCreatedAsync
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
-
-// Redis
 builder.AddRedisOutputCache("cache");
 builder.AddRedisClient("cache"); 
 
@@ -19,8 +17,19 @@ builder.AddRedisClient("cache");
 builder.Services.AddSingleton<PlayerUpdateNotifier>();
 builder.Services.AddHostedService<RedisLogStreamer>();
 
-// DB
-builder.AddNpgsqlDbContext<GameDbContext>("postgresdb");
+// DB: Use AddDbContextFactory for Blazor Server thread safety
+builder.AddNpgsqlDbContext<GameDbContext>("postgresdb", settings => 
+{
+    // Optional: Settings customization
+}, configureDbContextOptions: options => 
+{
+    // Best practice for Blazor: Enable sensitive data only in dev
+    if (builder.Environment.IsDevelopment()) 
+        options.EnableSensitiveDataLogging();
+});
+
+// Register the Factory explicitly used by components
+builder.Services.AddDbContextFactory<GameDbContext>(options => { });
 
 // Identity
 builder.Services.AddCascadingAuthenticationState();
@@ -35,7 +44,10 @@ builder.Services.AddAuthentication(options =>
     })
     .AddIdentityCookies();
 
-builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = true)
+builder.Services.AddIdentityCore<ApplicationUser>(options => 
+    {
+        options.SignIn.RequireConfirmedAccount = true;
+    })
     .AddEntityFrameworkStores<GameDbContext>()
     .AddSignInManager()
     .AddDefaultTokenProviders();
@@ -45,20 +57,18 @@ builder.Services.AddRazorComponents()
 
 var app = builder.Build();
 
-// --- DB MIGRATION FIX ---
+// Migrations
 if (app.Environment.IsDevelopment())
 {
+    // Create a scope just for migration check
     using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<GameDbContext>();
-        // Fix: Ensure tables exist before UI tries to query them
         await db.Database.EnsureCreatedAsync();
     }
-
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
     app.UseHsts();
 }
-// ------------------------
 
 app.UseHttpsRedirection();
 app.UseAntiforgery();

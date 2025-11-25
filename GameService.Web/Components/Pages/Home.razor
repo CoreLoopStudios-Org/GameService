@@ -3,23 +3,22 @@
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.EntityFrameworkCore
 @using GameService.ServiceDefaults.Data
+@using GameService.ServiceDefaults.DTOs
 @using System.Security.Claims
-@using GameService.ServiceDefaults.Messages
 @using GameService.Web.Services
 
 @attribute [Authorize]
 @rendermode InteractiveServer
 @implements IDisposable
 
-@inject GameDbContext Db
+@inject IDbContextFactory<GameDbContext> DbFactory
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthStateProvider
 @inject PlayerUpdateNotifier Notifier
 
 <PageTitle>Player Management</PageTitle>
 
-<h1>Player Management <span class="badge bg-success" style="font-size: 0.5em; vertical-align: middle">Live</span></h1>
-<p>Manage registered players and admins.</p>
+<h1>Player Management <span class="badge bg-success small align-middle">Live</span></h1>
 
 @if (users == null)
 {
@@ -67,7 +66,7 @@ else
 @code {
     private List<UserViewModel>? users;
     private string? currentUserId;
-    private HashSet<string> updatedUserIds = new();
+    private readonly HashSet<string> updatedUserIds = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -81,7 +80,8 @@ else
 
     private void HandleUpdate(PlayerUpdatedMessage msg)
     {
-        _ = InvokeAsync(async () =>
+        // Must invoke on UI thread
+        _ = InvokeAsync(() =>
         {
             if (users is null) return;
 
@@ -89,56 +89,41 @@ else
             
             if (userIndex != -1)
             {
-                // UPDATE EXISTING USER
-                var old = users[userIndex];
-                users[userIndex] = old with { Coins = msg.NewCoins };
+                // Update immutable record in list
+                users[userIndex] = users[userIndex] with { Coins = msg.NewCoins };
             }
-            else
+            else if (!string.IsNullOrEmpty(msg.Username))
             {
-                // ADD NEW USER (Live!)
-                // If the message contains the details, we add them immediately.
-                // If details are missing (legacy message), we might need to fetch, 
-                // but our API now sends them.
-                if (!string.IsNullOrEmpty(msg.Username))
-                {
-                    // We might not have the Profile ID in the message, 
-                    // usually for the admin table we need it for the Delete button.
-                    // For now, we can try to guess or fetch. 
-                    // Ideally, the message should have ProfileId too, 
-                    // but to keep it simple, let's just create a dummy ID or reload the list
-                    // if strictly necessary. 
-                    // BETTER: Let's trust the data we have.
-                    
-                    var newUser = new UserViewModel(
-                        0, // ID unknown until refresh, but UI can render 0 or we can fetch.
-                        msg.UserId,
-                        msg.Username,
-                        msg.Email ?? "Unknown",
-                        msg.NewCoins
-                    );
-                    
-                    // Add to top of list
-                    users.Insert(0, newUser);
-                    
-                    // OPTIONAL: Reload fully to get the correct Profile ID for the delete button
-                    // await LoadUsers(); 
-                }
+                // Add new user from live event
+                users.Insert(0, new UserViewModel(
+                    0, // ID unknown until refresh
+                    msg.UserId,
+                    msg.Username,
+                    msg.Email ?? "Unknown",
+                    msg.NewCoins
+                ));
             }
 
-            // Flash Animation
             updatedUserIds.Add(msg.UserId);
             StateHasChanged();
 
-            await Task.Delay(2000);
-            updatedUserIds.Remove(msg.UserId);
-            StateHasChanged();
+            // Clear highlight after 1s
+            _ = Task.Delay(1000).ContinueWith(_ => InvokeAsync(() => 
+            {
+                updatedUserIds.Remove(msg.UserId);
+                StateHasChanged();
+            }));
         });
     }
 
     private async Task LoadUsers()
     {
-        users = await Db.PlayerProfiles
+        // Safe Short-lived Context
+        using var db = await DbFactory.CreateDbContextAsync();
+        
+        users = await db.PlayerProfiles
             .AsNoTracking()
+            .Include(p => p.User)
             .OrderBy(p => p.Id)
             .Select(p => new UserViewModel(
                 p.Id,
@@ -154,18 +139,32 @@ else
     {
         if (profileId == 0) 
         {
-            // If we just added it live and didn't have ID, we can't delete yet.
-            // Force a reload to get IDs.
-            await LoadUsers();
+            await LoadUsers(); // Refresh to get IDs
             return; 
         }
 
-        var profile = await Db.PlayerProfiles.Include(p => p.User).FirstOrDefaultAsync(p => p.Id == profileId);
+        using var db = await DbFactory.CreateDbContextAsync();
+        var profile = await db.PlayerProfiles
+            .Include(p => p.User)
+            .FirstOrDefaultAsync(p => p.Id == profileId);
         
         if (profile is not null)
         {
             if (profile.UserId == currentUserId) return;
-            await UserManager.DeleteAsync(profile.User);
+            
+            // Note: Deleting user via UserManager requires its own scope/context usually, 
+            // but here we are using the injected UserManager which uses the Scoped context.
+            // In Blazor Server, reusing UserManager is tricky. 
+            // Better to delete directly if simple, or use a fresh scope.
+            // For now, we delete the profile directly which cascades if configured, 
+            // or we use a fresh Scope for UserManager.
+            
+            // Pro Fix: Cascading Delete is configured in GameDbContext.
+            // We can just delete the User entity.
+            
+            db.Users.Remove(profile.User);
+            await db.SaveChangesAsync();
+            
             await LoadUsers();
         }
     }

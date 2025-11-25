@@ -1,15 +1,14 @@
-using GameService.ServiceDefaults.Messages;
+using GameService.ServiceDefaults.DTOs;
 
 namespace GameService.Web.Services;
 
 public class PlayerUpdateNotifier
 {
-    // The event that pages will subscribe to
     public event Action<PlayerUpdatedMessage>? OnPlayerUpdated;
 
-    // Called by the Background Worker
     public void Notify(PlayerUpdatedMessage message)
     {
+        // Invoke safely
         OnPlayerUpdated?.Invoke(message);
     }
 }

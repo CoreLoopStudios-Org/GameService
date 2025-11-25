@@ -1,21 +1,16 @@
 using System.Text.Json.Serialization;
-using GameService.ServiceDefaults.Messages;
+using GameService.ServiceDefaults.DTOs;
 using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.AspNetCore.Identity.Data;
-using GameService.ServiceDefaults.Messages;
-
+using Microsoft.AspNetCore.Mvc;
 
 namespace GameService.ApiService;
-
-public record struct UpdateCoinRequest(long Amount);
-public record struct PlayerProfileResponse(string UserId, long Coins);
 
 [JsonSerializable(typeof(UpdateCoinRequest))]
 [JsonSerializable(typeof(PlayerProfileResponse))]
 [JsonSerializable(typeof(List<PlayerProfileResponse>))]
-[JsonSerializable(typeof(Microsoft.AspNetCore.Mvc.ProblemDetails))]
+[JsonSerializable(typeof(ProblemDetails))]
 [JsonSerializable(typeof(HttpValidationProblemDetails))]
-[JsonSerializable(typeof(Dictionary<string, string[]>))] 
 [JsonSerializable(typeof(AccessTokenResponse))]
 [JsonSerializable(typeof(LoginRequest))]
 [JsonSerializable(typeof(RegisterRequest))]
@@ -23,6 +18,3 @@ public record struct PlayerProfileResponse(string UserId, long Coins);
 internal partial class GameJsonContext : JsonSerializerContext
 {
 }
-
-
-
