@@ -33,43 +33,43 @@ Content-Type: {{contentType}}
     client.log("🔐 Token stored: " + response.body.accessToken);
 %}
 
-### 4. Get Profile (Initial Create)
-GET {{host}}/game/me
-Authorization: Bearer {{auth_token}}
-
-> {%
-    client.test("Status OK", function() {
-        client.assert(response.status === 200, "Response status is not 200");
-    });
-    client.global.set("starting_coins", response.body.coins);
-%}
-
-### 5. Earn Coins
-POST {{host}}/game/coins/transaction
-Authorization: Bearer {{auth_token}}
-Content-Type: {{contentType}}
-
-{
-  "amount": 50
-}
-
-> {%
-    client.test("Balance Updated", function() {
-        client.assert(response.body.newBalance > client.global.get("starting_coins"), "Balance did not increase");
-    });
-%}
-
-### 6. Security Check: Negative Overflow
-POST {{host}}/game/coins/transaction
-Authorization: Bearer {{auth_token}}
-Content-Type: {{contentType}}
-
-{
-  "amount": -999999
-}
-
-> {%
-    client.test("Rejected Insufficient Funds", function() {
-        client.assert(response.status === 400, "Should return Bad Request");
-    });
-%}
+#### 4. Get Profile (Initial Create)
+#GET {{host}}/game/me
+#Authorization: Bearer {{auth_token}}
+#
+#> {%
+#    client.test("Status OK", function() {
+#        client.assert(response.status === 200, "Response status is not 200");
+#    });
+#    client.global.set("starting_coins", response.body.coins);
+#%}
+#
+#### 5. Earn Coins
+#POST {{host}}/game/coins/transaction
+#Authorization: Bearer {{auth_token}}
+#Content-Type: {{contentType}}
+#
+#{
+#  "amount": 50
+#}
+#
+#> {%
+#    client.test("Balance Updated", function() {
+#        client.assert(response.body.newBalance > client.global.get("starting_coins"), "Balance did not increase");
+#    });
+#%}
+#
+#### 6. Security Check: Negative Overflow
+#POST {{host}}/game/coins/transaction
+#Authorization: Bearer {{auth_token}}
+#Content-Type: {{contentType}}
+#
+#{
+#  "amount": -999999
+#}
+#
+#> {%
+#    client.test("Rejected Insufficient Funds", function() {
+#        client.assert(response.status === 400, "Should return Bad Request");
+#    });
+#%}

@@ -24,4 +24,14 @@ public class GameHub : Hub
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId);
         await Clients.Group(roomId).SendAsync("PlayerLeft", Context.User?.Identity?.Name);
     }
+    
+    public async Task Ping(string message)
+    {
+        Console.WriteLine($"[Server] Received Ping: {message}"); // Verify this prints in server console
+    
+        string response = $"Success: {message}";
+    
+        // Use Clients.Caller.SendAsync
+        await Clients.Caller.SendAsync("Pong", response);
+    }
 }
