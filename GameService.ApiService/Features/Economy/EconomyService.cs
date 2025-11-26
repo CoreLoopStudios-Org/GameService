@@ -1,9 +1,7 @@
-using System.Text.Json;
-using GameService.ApiService;
+using GameService.ApiService.Features.Common;
 using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.DTOs;
 using Microsoft.EntityFrameworkCore;
-using StackExchange.Redis;
 
 namespace GameService.ApiService.Features.Economy;
 
@@ -14,7 +12,7 @@ public interface IEconomyService
 
 public record TransactionResult(bool Success, long NewBalance, string? Error = null);
 
-public class EconomyService(GameDbContext db, IConnectionMultiplexer redis) : IEconomyService
+public class EconomyService(GameDbContext db, IGameEventPublisher publisher) : IEconomyService
 {
     public async Task<TransactionResult> ProcessTransactionAsync(string userId, long amount)
     {
@@ -37,9 +35,10 @@ public class EconomyService(GameDbContext db, IConnectionMultiplexer redis) : IE
                     db.PlayerProfiles.Add(profile);
                 }
 
+                // Check for insufficient funds
                 if (amount < 0 && (profile.Coins + amount < 0))
                 {
-                    return new TransactionResult(false, 0, "Insufficient funds");
+                    return new TransactionResult(false, profile.Coins, "Insufficient funds");
                 }
 
                 profile.Coins += amount;
@@ -54,8 +53,7 @@ public class EconomyService(GameDbContext db, IConnectionMultiplexer redis) : IE
                     profile.User?.UserName ?? "Unknown", 
                     profile.User?.Email ?? "Unknown");
 
-                var json = JsonSerializer.Serialize(message, GameJsonContext.Default.PlayerUpdatedMessage);
-                await redis.GetSubscriber().PublishAsync(RedisChannel.Literal("player_updates"), json);
+                await publisher.PublishPlayerUpdatedAsync(message);
 
                 return new TransactionResult(true, profile.Coins);
             }

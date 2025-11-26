@@ -8,6 +8,8 @@ using GameService.ApiService.Infrastructure.Security;
 using GameService.ServiceDefaults.Data;
 using Microsoft.AspNetCore.Identity;
 
+using GameService.ApiService.Features.Common;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
@@ -28,6 +30,7 @@ builder.Services.AddIdentityApiEndpoints<ApplicationUser>()
 builder.Services.AddScoped<IPasswordHasher<ApplicationUser>, Argon2PasswordHasher>();
 
 // Features
+builder.Services.AddScoped<IGameEventPublisher, RedisGameEventPublisher>();
 builder.Services.AddScoped<IPlayerService, PlayerService>();
 builder.Services.AddScoped<IEconomyService, EconomyService>();
 
