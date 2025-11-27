@@ -1,5 +1,4 @@
-﻿using NBomber.Contracts;
-using NBomber.CSharp;
+﻿using NBomber.CSharp;
 using NBomber.Http.CSharp;
 
 namespace GameService.PerformanceTests;

@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 
 using GameService.ApiService.Features.Common;
+using GameService.Ludo;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -64,6 +65,14 @@ builder.Services.AddScoped<IEconomyService, EconomyService>();
 builder.Services.AddSignalR()
     .AddStackExchangeRedis(builder.Configuration.GetConnectionString("cache") ?? throw new InvalidOperationException("Redis connection string is missing"));
 
+builder.Services.AddScoped<LudoRoomService>();
+
+// Real-time: SignalR
+builder.Services.AddSignalR()
+    .AddStackExchangeRedis(builder.Configuration.GetConnectionString("cache") ?? throw new InvalidOperationException("Redis connection string is missing"))
+    // Ensure we can serialize the byte arrays for state
+    .AddJsonProtocol();
+
 var app = builder.Build();
 
 // Development Seeding
@@ -84,6 +93,7 @@ app.MapEconomyEndpoints();
 
 // Map Hubs
 app.MapHub<GameHub>("/hubs/game");
+app.MapHub<GameHub>("/hubs/ludo");
 
 app.MapDefaultEndpoints();
 app.Run();
