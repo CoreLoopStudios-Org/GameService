@@ -32,8 +32,13 @@ public unsafe struct LudoState
 
     public void AdvanceTurnPointer()
     {
-        do { CurrentPlayer = (byte)((CurrentPlayer + 1) & 3); } 
-        while ((ActiveSeats & (1 << CurrentPlayer)) == 0);
+        if (ActiveSeats == 0) return;
+        int attempts = 0;
+        do { 
+            CurrentPlayer = (byte)((CurrentPlayer + 1) & 3); 
+            attempts++;
+        } 
+        while ((ActiveSeats & (1 << CurrentPlayer)) == 0 && attempts < 4);
     }
 }
 

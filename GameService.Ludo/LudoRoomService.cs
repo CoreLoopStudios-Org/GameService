@@ -32,17 +32,33 @@ public class LudoRoomService(IConnectionMultiplexer redis)
     public async Task<bool> JoinRoomAsync(string roomId, string userId)
     {
         var metaKey = GetMetaKey(roomId);
-        var json = await _db.StringGetAsync(metaKey);
-        if (json.IsNullOrEmpty) return false;
+        
+        // Lua script to atomically check capacity and join
+        // Keys: { metaKey }
+        // Args: { userId }
+        const string script = @"
+            var metaJson = redis.call('GET', KEYS[1])
+            if not metaJson then return 0 end
+            
+            var meta = cjson.decode(metaJson)
+            
+            if meta.PlayerSeats[ARGV[1]] then return 1 end
+            
+            -- Count keys in PlayerSeats
+            var count = 0
+            for _ in pairs(meta.PlayerSeats) do count = count + 1 end
+            
+            if count >= 2 then return 0 end
+            
+            -- Assign seat 2 (for 2 player game)
+            meta.PlayerSeats[ARGV[1]] = 2
+            
+            redis.call('SET', KEYS[1], cjson.encode(meta))
+            return 1
+        ";
 
-        var meta = JsonSerializer.Deserialize<LudoRoomMeta>((string)json!);
-        if (meta.PlayerSeats.ContainsKey(userId)) return true;
-        if (meta.PlayerSeats.Count >= 2) return false;
-        
-        meta.PlayerSeats[userId] = 2;
-        await _db.StringSetAsync(metaKey, JsonSerializer.Serialize(meta));
-        
-        return true;
+        var result = await _db.ScriptEvaluateAsync(LuaScript.Prepare(script), new { metaKey = (RedisKey)metaKey, userId });
+        return (int)result == 1;
     }
     
     public async Task<LudoContext?> LoadGameAsync(string roomId)

@@ -28,7 +28,11 @@ public class PlayerService(GameDbContext db, IGameEventPublisher publisher) : IP
                 profile = newProfile;
                 
                 var user = await db.Users.FindAsync(userId);
-                var message = new PlayerUpdatedMessage(userId, profile.Coins, user?.UserName, user?.Email);
+                var message = new PlayerUpdatedMessage(
+                    userId, 
+                    profile.Coins, 
+                    user?.UserName ?? "Unknown", 
+                    user?.Email ?? "Unknown");
                 await publisher.PublishPlayerUpdatedAsync(message);
             }
             catch (DbUpdateException) 

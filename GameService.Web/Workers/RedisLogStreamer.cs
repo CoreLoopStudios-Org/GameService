@@ -19,7 +19,7 @@ public class RedisLogStreamer(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var sub = redis.GetSubscriber();
-        var channel = await sub.SubscribeAsync(GameConstants.PlayerUpdatesChannel);
+        var channel = await sub.SubscribeAsync(RedisChannel.Literal(GameConstants.PlayerUpdatesChannel));
 
         logger.LogInformation("🔴 Connected to Redis. Listening for player updates...");
 
@@ -52,7 +52,7 @@ public class RedisLogStreamer(
         finally
         {
             if (redis.IsConnected)
-                await sub.UnsubscribeAsync(GameConstants.PlayerUpdatesChannel);
+                await sub.UnsubscribeAsync(RedisChannel.Literal(GameConstants.PlayerUpdatesChannel));
         }
     }
 }

@@ -57,7 +57,7 @@ builder.Services.AddScoped<IGameEventPublisher, RedisGameEventPublisher>();
 builder.Services.AddScoped<IPlayerService, PlayerService>();
 builder.Services.AddScoped<IEconomyService, EconomyService>();
 
-builder.Services.AddScoped<LudoRoomService>();
+builder.Services.AddSingleton<LudoRoomService>();
 
 builder.Services.AddSignalR()
     .AddStackExchangeRedis(builder.Configuration.GetConnectionString("cache") ?? throw new InvalidOperationException("Redis connection string is missing"))

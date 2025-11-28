@@ -37,6 +37,10 @@ public class EconomyServiceTests
     public async Task ProcessTransactionAsync_ShouldCreateProfile_WhenNotExists()
     {
         var userId = "user1";
+        var user = new ApplicationUser { Id = userId, UserName = "user1", Email = "user1@example.com" };
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+
         var amount = 100;
 
         var result = await _service.ProcessTransactionAsync(userId, amount);
@@ -78,6 +82,9 @@ public class EconomyServiceTests
     public async Task ProcessTransactionAsync_ShouldPublishEvent_WhenSuccessful()
     {
         var userId = "user3";
+        var user = new ApplicationUser { Id = userId, UserName = "user3", Email = "user3@example.com" };
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
 
         await _service.ProcessTransactionAsync(userId, 50);
 

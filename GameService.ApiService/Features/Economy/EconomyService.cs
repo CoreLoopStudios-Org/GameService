@@ -34,7 +34,12 @@ public class EconomyService(GameDbContext db, IGameEventPublisher publisher) : I
                 if (profile is null)
                 {
                     var user = await db.Users.FindAsync(userId);
-                    profile = new PlayerProfile { UserId = userId, Coins = 100, User = user! };
+                    if (user is null)
+                    {
+                        return new TransactionResult(false, 0, TransactionErrorType.Unknown, "User account not found.");
+                    }
+
+                    profile = new PlayerProfile { UserId = userId, Coins = 100, User = user };
                     db.PlayerProfiles.Add(profile);
                 }
 
