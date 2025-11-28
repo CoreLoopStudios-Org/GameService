@@ -1,5 +1,6 @@
 @page "/games/{RoomId}"
 @attribute [Authorize]
+@rendermode InteractiveServer
 @inject GameAdminService AdminService
 @inject NavigationManager Nav
 @using GameService.Web.Components.Ludo

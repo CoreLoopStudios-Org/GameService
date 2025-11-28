@@ -4,7 +4,7 @@
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <PublishAot>true</PublishAot>
+        <PublishAot>false</PublishAot>
         <InvariantGlobalization>true</InvariantGlobalization>
         <InterceptorsPreviewNamespaces>$(InterceptorsPreviewNamespaces);Microsoft.EntityFrameworkCore</InterceptorsPreviewNamespaces>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

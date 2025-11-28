@@ -78,9 +78,11 @@ if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
     await DbInitializer.InitializeAsync(app.Services);
 }
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
 app.UseCors();
 app.UseRateLimiter();
+
+app.UseAuthentication();
 
 app.Use(async (context, next) =>
 {
@@ -92,6 +94,8 @@ app.Use(async (context, next) =>
     }
     await next();
 });
+
+app.UseAuthorization();
 
 app.MapAuthEndpoints();
 app.MapPlayerEndpoints();
