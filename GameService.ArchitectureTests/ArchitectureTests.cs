@@ -32,7 +32,6 @@ public class ArchitectureTests
     [Test]
     public void Features_Should_Be_Sealed_Or_Static_Ideally()
     {
-        // Example rule: Endpoint classes should be static
         var result = Types.InAssembly(typeof(EconomyService).Assembly)
             .That()
             .HaveNameEndingWith("Endpoints")

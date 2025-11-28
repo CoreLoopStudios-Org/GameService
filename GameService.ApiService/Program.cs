@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using System.Threading.RateLimiting;
 
 using GameService.ApiService.Features.Common;
-using GameService.Ludo; // Contains LudoHub and LudoRoomService
+using GameService.Ludo;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,7 +18,6 @@ builder.AddServiceDefaults();
 builder.AddNpgsqlDbContext<GameDbContext>("postgresdb");
 builder.AddRedisClient("cache");
 
-// Optimization: Use Source Generators for JSON
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, GameJsonContext.Default);
@@ -52,26 +51,20 @@ builder.Services.AddAuthorization();
 builder.Services.AddIdentityApiEndpoints<ApplicationUser>()
     .AddEntityFrameworkStores<GameDbContext>();
 
-// Security: Use Argon2
 builder.Services.AddScoped<IPasswordHasher<ApplicationUser>, Argon2PasswordHasher>();
 
-// Features
 builder.Services.AddScoped<IGameEventPublisher, RedisGameEventPublisher>();
 builder.Services.AddScoped<IPlayerService, PlayerService>();
 builder.Services.AddScoped<IEconomyService, EconomyService>();
 
-// Ludo Services
 builder.Services.AddScoped<LudoRoomService>();
 
-// Real-time: SignalR
 builder.Services.AddSignalR()
     .AddStackExchangeRedis(builder.Configuration.GetConnectionString("cache") ?? throw new InvalidOperationException("Redis connection string is missing"))
-    // Ensure we can serialize the byte arrays for state
     .AddJsonProtocol();
 
 var app = builder.Build();
 
-// Development Seeding
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 {
     app.MapOpenApi();
@@ -82,14 +75,11 @@ app.UseHttpsRedirection();
 app.UseCors();
 app.UseRateLimiter();
 
-// Map Features
 app.MapAuthEndpoints();
 app.MapPlayerEndpoints();
 app.MapEconomyEndpoints();
 
-// Map Hubs
 app.MapHub<GameHub>("/hubs/game");
-// FIX: Map the correct LudoHub here
 app.MapHub<LudoHub>("/hubs/ludo"); 
 
 app.MapDefaultEndpoints();

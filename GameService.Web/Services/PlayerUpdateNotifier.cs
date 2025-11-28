@@ -8,7 +8,6 @@ public class PlayerUpdateNotifier
 
     public void Notify(PlayerUpdatedMessage message)
     {
-        // Invoke safely
         OnPlayerUpdated?.Invoke(message);
     }
 }

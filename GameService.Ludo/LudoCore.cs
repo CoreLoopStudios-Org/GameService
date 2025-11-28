@@ -2,7 +2,6 @@ using System.Runtime.InteropServices;
 
 namespace GameService.Ludo;
 
-// 1. CONSTANTS
 public static class LudoConstants
 {
     public const int PlayerCount = 4;
@@ -17,7 +16,6 @@ public static class LudoConstants
     public const int QuadrantSize = 13;
 }
 
-// 2. STATE (28 Bytes - Ultra fast Redis storage)
 [StructLayout(LayoutKind.Explicit, Size = 28)]
 public unsafe struct LudoState
 {
@@ -27,7 +25,7 @@ public unsafe struct LudoState
     [FieldOffset(18)] public byte ConsecutiveSixes;
     [FieldOffset(19)] public byte Winner;
     [FieldOffset(20)] public int TurnId;
-    [FieldOffset(24)] public byte ActiveSeats; // Bitmask: 1=P0, 2=P1, 4=P2, 8=P3
+    [FieldOffset(24)] public byte ActiveSeats;
 
     public byte GetTokenPos(int player, int tokenIndex) => Tokens[(player << 2) + tokenIndex];
     public void SetTokenPos(int player, int tokenIndex, byte pos) => Tokens[(player << 2) + tokenIndex] = pos;
@@ -39,7 +37,6 @@ public unsafe struct LudoState
     }
 }
 
-// 3. RESULTS
 public enum LudoStatus : short
 {
     None = 0,
@@ -58,18 +55,15 @@ public enum LudoStatus : short
 public record struct RollResult(LudoStatus Status, byte DiceValue);
 public record struct MoveResult(LudoStatus Status, byte NewPos, int CapturedPid = -1, int CapturedTid = -1);
 
-// 4. LOGIC ENGINE
 public class LudoEngine(IDiceRoller roller)
 {
     public LudoState State;
 
-    // Load existing state from Redis
     public LudoEngine(LudoState state, IDiceRoller roller) : this(roller)
     {
         State = state;
     }
 
-    // Initialize New Game
     public void InitNewGame(int playerCount)
     {
         unsafe { fixed (byte* ptr = State.Tokens) { *(long*)ptr = 0; *(long*)(ptr + 8) = 0; } }
@@ -78,7 +72,6 @@ public class LudoEngine(IDiceRoller roller)
         State.Winner = 255;
         State.TurnId = 1;
 
-        // Setup seats: 2 Players -> P0 & P2 (Red & Yellow)
         State.ActiveSeats = (byte)(playerCount == 2 ? 0b00000101 : 0b00001111);
         if ((State.ActiveSeats & 1) == 0) State.AdvanceTurnPointer();
     }
@@ -86,12 +79,11 @@ public class LudoEngine(IDiceRoller roller)
     public bool TryRollDice(out RollResult result)
     {
         if (State.Winner != 255) { result = new(LudoStatus.ErrorGameEnded, 0); return false; }
-        if (State.LastDiceRoll != 0) { result = new(LudoStatus.ErrorNeedToRoll, State.LastDiceRoll); return false; } // Actually ErrorAlreadyRolled
+        if (State.LastDiceRoll != 0) { result = new(LudoStatus.ErrorNeedToRoll, State.LastDiceRoll); return false; }
 
         byte dice = roller.Roll();
         State.LastDiceRoll = dice;
-        
-        // Handle Triple 6
+
         if (dice == 6) {
             State.ConsecutiveSixes++;
             if (State.ConsecutiveSixes >= LudoConstants.MaxConsecutiveSixes) {
@@ -103,7 +95,6 @@ public class LudoEngine(IDiceRoller roller)
             State.ConsecutiveSixes = 0;
         }
 
-        // Check if any move is possible
         if (!CanMoveAnyToken(dice)) {
             bool bonus = (dice == 6);
             EndTurn(advance: !bonus);
@@ -121,30 +112,26 @@ public class LudoEngine(IDiceRoller roller)
         
         int pIdx = State.CurrentPlayer;
         byte curPos = State.GetTokenPos(pIdx, tIdx);
-        
-        // Prediction Logic (Simplified for brevity, refer to original Core for full rules)
+
         if (!PredictMove(pIdx, curPos, State.LastDiceRoll, out byte nextPos))
         {
             result = new(LudoStatus.ErrorTokenInBase, curPos);
             return false;
         }
 
-        // Apply Move
         State.SetTokenPos(pIdx, tIdx, nextPos);
         LudoStatus status = LudoStatus.Success;
 
-        // Win Check
         if (CheckWin(pIdx)) {
             State.Winner = (byte)pIdx;
             status |= LudoStatus.GameWon;
         }
 
-        // Capture Check
         int capPid = -1, capTid = -1;
         if (TryCapture(pIdx, nextPos, out capPid, out capTid)) {
             status |= LudoStatus.CapturedOpponent;
             status |= LudoStatus.ExtraTurn;
-            State.SetTokenPos(capPid, capTid, LudoConstants.PosBase); // Send home
+            State.SetTokenPos(capPid, capTid, LudoConstants.PosBase);
         }
 
         if (State.LastDiceRoll == 6) status |= LudoStatus.ExtraTurn;
@@ -180,7 +167,7 @@ public class LudoEngine(IDiceRoller roller)
             return false;
         }
         int potential = cur + dice;
-        if (potential > LudoConstants.PosHome) return false; // Simple overshot check
+        if (potential > LudoConstants.PosHome) return false;
         next = (byte)potential;
         return true;
     }
@@ -192,8 +179,6 @@ public class LudoEngine(IDiceRoller roller)
 
     private bool TryCapture(int myPid, byte myPos, out int vPid, out int vTid) {
         vPid = -1; vTid = -1;
-        // Calculate Absolute position to check collisions (omitted for brevity, assume implemented in Logic)
-        // See previous LudoLogic.ToAbsolute implementation
         return false; 
     }
 }

@@ -25,7 +25,6 @@ public static class EconomyEndpoints
 
         if (!result.Success)
         {
-            // Determine if it's a 400 or 409 based on error message or add ErrorType enum
             if (result.ErrorType == TransactionErrorType.ConcurrencyConflict)
                 return Results.Conflict(result.ErrorMessage);
             

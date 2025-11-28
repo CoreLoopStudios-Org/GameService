@@ -8,7 +8,6 @@ public class GameHub : Hub
 {
     public override async Task OnConnectedAsync()
     {
-        // Example: Add user to their own group or a lobby
         await Groups.AddToGroupAsync(Context.ConnectionId, "Lobby");
         await base.OnConnectedAsync();
     }
@@ -27,11 +26,10 @@ public class GameHub : Hub
     
     public async Task Ping(string message)
     {
-        Console.WriteLine($"[Server] Received Ping: {message}"); // Verify this prints in server console
-    
+        Console.WriteLine($"[Server] Received Ping: {message}");
+
         string response = $"Success: {message}";
-    
-        // Use Clients.Caller.SendAsync
+
         await Clients.Caller.SendAsync("Pong", response);
     }
 }

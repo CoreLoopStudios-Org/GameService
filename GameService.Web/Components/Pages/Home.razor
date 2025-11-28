@@ -81,7 +81,6 @@ else
 
     private void HandleUpdate(PlayerUpdatedMessage msg)
     {
-        // Must invoke on UI thread
         _ = InvokeAsync(() =>
         {
             if (users is null) return;
@@ -90,15 +89,12 @@ else
             
             if (userIndex != -1)
             {
-                // Update immutable record in list
                 users[userIndex] = users[userIndex] with { Coins = msg.NewCoins };
             }
             else if (!string.IsNullOrEmpty(msg.Username))
             {
-                // Add new user from live event
                 users.Insert(0, new UserViewModel(
-                    0, // ID unknown until refresh
-                    msg.UserId,
+                    0, msg.UserId,
                     msg.Username,
                     msg.Email ?? "Unknown",
                     msg.NewCoins
@@ -108,7 +104,6 @@ else
             updatedUserIds.Add(msg.UserId);
             StateHasChanged();
 
-            // Clear highlight after 1s
             _ = Task.Delay(1000).ContinueWith(_ => InvokeAsync(() => 
             {
                 updatedUserIds.Remove(msg.UserId);
@@ -119,7 +114,6 @@ else
 
     private async Task LoadUsers()
     {
-        // Safe Short-lived Context
         using var db = await DbFactory.CreateDbContextAsync();
         
         users = await db.PlayerProfiles
@@ -140,7 +134,7 @@ else
     {
         if (profileId == 0) 
         {
-            await LoadUsers(); // Refresh to get IDs
+            await LoadUsers();
             return; 
         }
 
@@ -152,17 +146,7 @@ else
         if (profile is not null)
         {
             if (profile.UserId == currentUserId) return;
-            
-            // Note: Deleting user via UserManager requires its own scope/context usually, 
-            // but here we are using the injected UserManager which uses the Scoped context.
-            // In Blazor Server, reusing UserManager is tricky. 
-            // Better to delete directly if simple, or use a fresh scope.
-            // For now, we delete the profile directly which cascades if configured, 
-            // or we use a fresh Scope for UserManager.
-            
-            // Pro Fix: Cascading Delete is configured in GameDbContext.
-            // We can just delete the User entity.
-            
+
             db.Users.Remove(profile.User);
             await db.SaveChangesAsync();
             

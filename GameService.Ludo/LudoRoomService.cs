@@ -13,16 +13,13 @@ public class LudoRoomService(IConnectionMultiplexer redis)
     public async Task<string?> CreateRoomAsync(string hostUserId)
     {
         string roomId = Guid.NewGuid().ToString("N")[..8];
-        
-        // 1. Initialize State
+
         var engine = new LudoEngine(new ServerDiceRoller());
         engine.InitNewGame(2);
-        
-        // 2. Save State (Binary) - Move unsafe work outside async
+
         byte[] stateBytes = SerializeState(engine.State);
         await _db.StringSetAsync(GetStateKey(roomId), stateBytes);
-        
-        // 3. Save Meta
+
         var meta = new LudoRoomMeta { 
             PlayerSeats = new() { { hostUserId, 0 } },
             IsPublic = true 
@@ -37,8 +34,7 @@ public class LudoRoomService(IConnectionMultiplexer redis)
         var metaKey = GetMetaKey(roomId);
         var json = await _db.StringGetAsync(metaKey);
         if (json.IsNullOrEmpty) return false;
-        
-        // Fix ambiguous call by explicitly converting to string
+
         var meta = JsonSerializer.Deserialize<LudoRoomMeta>((string)json!);
         if (meta.PlayerSeats.ContainsKey(userId)) return true;
         if (meta.PlayerSeats.Count >= 2) return false;
@@ -55,8 +51,7 @@ public class LudoRoomService(IConnectionMultiplexer redis)
         var metaJson = await _db.StringGetAsync(GetMetaKey(roomId));
         
         if (stateBytes.IsNullOrEmpty || metaJson.IsNullOrEmpty) return null;
-        
-        // Deserialize state outside async context
+
         LudoState state = DeserializeState((byte[])stateBytes!);
         var meta = JsonSerializer.Deserialize<LudoRoomMeta>((string)metaJson!);
         
@@ -68,8 +63,7 @@ public class LudoRoomService(IConnectionMultiplexer redis)
         byte[] stateBytes = SerializeState(ctx.Engine.State);
         await _db.StringSetAsync(GetStateKey(ctx.RoomId), stateBytes);
     }
-    
-    // Helper methods to isolate unsafe code
+
     private static unsafe byte[] SerializeState(LudoState state)
     {
         var bytes = new byte[sizeof(LudoState)];

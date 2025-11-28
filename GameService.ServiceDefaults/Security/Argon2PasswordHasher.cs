@@ -12,8 +12,7 @@ public class Argon2PasswordHasher : IPasswordHasher<ApplicationUser>
     {
         var salt = CreateSalt();
         var hash = HashPassword(password, salt);
-        
-        // Format: $argon2id$v=19$m=65536,t=3,p=1$salt$hash
+
         return $"$argon2id$v=19$m=65536,t=3,p=1${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
     }
 

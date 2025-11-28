@@ -22,7 +22,6 @@ public class GameDbContext(DbContextOptions<GameDbContext> options)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // Performance: Index on UserId for fast lookups
         builder.Entity<PlayerProfile>()
             .HasIndex(p => p.UserId)
             .IsUnique();
@@ -38,8 +37,7 @@ public class PlayerProfile
 {
     public int Id { get; set; }
 
-    [MaxLength(450)] // Match Identity User Id length
-    public required string UserId { get; set; }
+    [MaxLength(450)] public required string UserId { get; set; }
     public ApplicationUser User { get; set; } = null!;
 
     public long Coins { get; set; } = 100;

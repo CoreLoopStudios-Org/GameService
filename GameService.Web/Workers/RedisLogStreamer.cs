@@ -11,7 +11,6 @@ public class RedisLogStreamer(
     PlayerUpdateNotifier notifier, 
     ILogger<RedisLogStreamer> logger) : BackgroundService
 {
-    // Optimization: Re-use options
     private static readonly JsonSerializerOptions _jsonOptions = new() 
     { 
         PropertyNameCaseInsensitive = true 
@@ -20,7 +19,6 @@ public class RedisLogStreamer(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var sub = redis.GetSubscriber();
-        // Use pattern matching or specific channel
         var channel = await sub.SubscribeAsync(GameConstants.PlayerUpdatesChannel);
 
         logger.LogInformation("🔴 Connected to Redis. Listening for player updates...");
@@ -33,8 +31,6 @@ public class RedisLogStreamer(
 
                 try
                 {
-                    // Use ReadOnlySpan for parsing efficiency if we went deeper, 
-                    // but simple string deserialize is fine here.
                     var update = JsonSerializer.Deserialize<PlayerUpdatedMessage>(
                         (string)message.Message!, 
                         _jsonOptions);
@@ -52,11 +48,9 @@ public class RedisLogStreamer(
         }
         catch (OperationCanceledException)
         {
-            // Graceful shutdown
         }
         finally
         {
-            // Cleanup
             if (redis.IsConnected)
                 await sub.UnsubscribeAsync(GameConstants.PlayerUpdatesChannel);
         }
