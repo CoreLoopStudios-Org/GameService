@@ -13,7 +13,6 @@ public class LudoModule : IGameModule
     {
         services.AddSingleton<ILudoRepository, RedisLudoRepository>();
         services.AddSingleton<LudoRoomService>();
-        // Register as IGameRoomService so generic admin can find it
         services.AddSingleton<IGameRoomService>(sp => sp.GetRequiredService<LudoRoomService>());
     }
 
@@ -21,7 +20,5 @@ public class LudoModule : IGameModule
     {
         var group = endpoints.MapGroup("/games/ludo").RequireAuthorization();
         group.MapHub<LudoHub>("/hubs/ludo");
-        
-        // Ludo specific endpoints if any
     }
 }

@@ -77,7 +77,6 @@ public class LudoEngine(IDiceRoller roller)
 
     public void InitNewGame(int playerCount)
     {
-        // Clear tokens
         for (int i = 0; i < 16; i++) State.Tokens[i] = 0;
         
         State.CurrentPlayer = 0;

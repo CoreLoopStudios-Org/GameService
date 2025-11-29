@@ -1,5 +1,5 @@
 using GameService.GameCore;
-using GameService.Ludo; // Still needed for LudoContext if we use it for detail
+using GameService.Ludo;
 using GameService.ServiceDefaults.DTOs;
 using System.Net.Http.Json;
 
@@ -11,33 +11,6 @@ public class GameAdminService(HttpClient http)
     {
         return await http.GetFromJsonAsync<List<GameRoomDto>>("/admin/games") ?? [];
     }
-
-    // CreateGame is tricky now as it's generic. We might need to pass game type.
-    // For now, let's assume Ludo for the button or remove the button.
-    // The user asked for a rewrite.
-    /*
-    public async Task CreateGameAsync()
-    {
-        var response = await http.PostAsync("/admin/games", null);
-        response.EnsureSuccessStatusCode();
-    }
-    */
-
-    /*
-    public async Task ForceRollAsync(string roomId, int value)
-    {
-        var response = await http.PostAsync($"/admin/games/{roomId}/roll?value={value}", null);
-        response.EnsureSuccessStatusCode();
-    }
-    */
-
-    /*
-    public async Task DeleteGameAsync(string roomId)
-    {
-        var response = await http.DeleteAsync($"/admin/games/{roomId}");
-        response.EnsureSuccessStatusCode();
-    }
-    */
 
     public async Task<List<AdminPlayerDto>> GetPlayersAsync()
     {

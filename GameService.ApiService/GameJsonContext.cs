@@ -17,6 +17,7 @@ namespace GameService.ApiService;
 [JsonSerializable(typeof(LoginRequest))]
 [JsonSerializable(typeof(RegisterRequest))]
 [JsonSerializable(typeof(PlayerUpdatedMessage))]
+[JsonSerializable(typeof(PlayerChangeType))]
 [JsonSerializable(typeof(SupportedGameDto))]
 [JsonSerializable(typeof(List<SupportedGameDto>))]
 internal partial class GameJsonContext : JsonSerializerContext

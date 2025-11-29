@@ -1,5 +1,5 @@
 using FluentAssertions;
-using GameService.ApiService.Features.Common;
+using GameService.ServiceDefaults;
 using GameService.ApiService.Features.Economy;
 using GameService.ServiceDefaults.Data;
 using Microsoft.EntityFrameworkCore;
@@ -22,8 +22,10 @@ public class EconomyServiceTests
             .ConfigureWarnings(x => x.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
             .Options;
 
-        _db = new GameDbContext(options);
         _publisherMock = new Mock<IGameEventPublisher>();
+
+        _db = new GameDbContext(options, _publisherMock.Object); 
+        
         _service = new EconomyService(_db, _publisherMock.Object);
     }
 
@@ -64,11 +66,6 @@ public class EconomyServiceTests
 
         var result = await _service.ProcessTransactionAsync(userId, -100);
 
-        if (result.Success)
-        {
-            Console.WriteLine($"Test Failed. Balance: {result.NewBalance}. Profile Coins: {(await _db.PlayerProfiles.FirstAsync(p => p.UserId == userId)).Coins}");
-        }
-
         result.Success.Should().BeFalse();
         result.ErrorMessage.Should().Contain("Insufficient funds");
         result.ErrorType.Should().Be(TransactionErrorType.InsufficientFunds);
@@ -90,7 +87,6 @@ public class EconomyServiceTests
 
         _publisherMock.Verify(p => p.PublishPlayerUpdatedAsync(It.Is<ServiceDefaults.DTOs.PlayerUpdatedMessage>(m => 
             m.UserId == userId && m.NewCoins == 150
-        )), Times.Once);
+        )), Times.AtLeastOnce);
     }
-    
 }

@@ -39,8 +39,7 @@ public class LudoHub(LudoRoomService roomService) : Hub
         if (ctx == null) return;
 
         if (!ctx.Meta.PlayerSeats.TryGetValue(UserId, out int mySeat)) return;
-        
-        // Reconstruct engine
+
         var engine = new LudoEngine(ctx.State, new ServerDiceRoller());
         
         if (engine.State.CurrentPlayer != mySeat) 
@@ -51,7 +50,6 @@ public class LudoHub(LudoRoomService roomService) : Hub
 
         if (engine.TryRollDice(out var result))
         {
-            // Update state in context
             var newCtx = ctx with { State = engine.State };
             await roomService.SaveGameAsync(newCtx);
 
@@ -91,7 +89,6 @@ public class LudoHub(LudoRoomService roomService) : Hub
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        // In a real app, we would track connectionId -> roomId to notify "PlayerLeft"
         await base.OnDisconnectedAsync(exception);
     }
     

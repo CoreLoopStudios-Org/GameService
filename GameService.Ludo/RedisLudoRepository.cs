@@ -15,8 +15,7 @@ public class RedisLudoRepository(IConnectionMultiplexer redis) : ILudoRepository
     {
         byte[] stateBytes = SerializeState(context.State);
         await _db.StringSetAsync(GetStateKey(context.RoomId), stateBytes);
-        
-        // We also save meta in case it changed (e.g. players joined)
+
         await _db.StringSetAsync(GetMetaKey(context.RoomId), JsonSerializer.Serialize(context.Meta, LudoJsonContext.Default.LudoRoomMeta));
     }
 
@@ -42,7 +41,7 @@ public class RedisLudoRepository(IConnectionMultiplexer redis) : ILudoRepository
         {
             var ctx = await LoadGameAsync(id.ToString());
             if (ctx != null) games.Add(ctx);
-            else await _db.SetRemoveAsync(ActiveRoomsKey, id); // Cleanup stale
+            else await _db.SetRemoveAsync(ActiveRoomsKey, id);
         }
         
         return games;
@@ -57,8 +56,7 @@ public class RedisLudoRepository(IConnectionMultiplexer redis) : ILudoRepository
     public async Task<bool> TryJoinRoomAsync(string roomId, string userId)
     {
         var metaKey = GetMetaKey(roomId);
-        
-        // Lua script to atomically check capacity and join
+
         const string script = @"
             local metaJson = redis.call('GET', KEYS[1])
             if not metaJson then return 0 end
@@ -91,11 +89,13 @@ public class RedisLudoRepository(IConnectionMultiplexer redis) : ILudoRepository
 
     private static byte[] SerializeState(LudoState state)
     {
-        return System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(state, LudoJsonContext.Default.LudoState);
+        var bytes = new byte[28];
+        System.Runtime.InteropServices.MemoryMarshal.Write(bytes, in state);
+        return bytes;
     }
     
     private static LudoState DeserializeState(byte[] bytes)
     {
-        return System.Text.Json.JsonSerializer.Deserialize<LudoState>(bytes, LudoJsonContext.Default.LudoState)!;
+        return System.Runtime.InteropServices.MemoryMarshal.Read<LudoState>(bytes);
     }
 }

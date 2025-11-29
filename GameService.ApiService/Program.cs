@@ -8,12 +8,11 @@ using GameService.ServiceDefaults.Security;
 using GameService.ServiceDefaults.Data;
 using Microsoft.AspNetCore.Identity;
 using System.Threading.RateLimiting;
-
+using GameService.ServiceDefaults;
 using GameService.ApiService.Features.Common;
 using GameService.ApiService.Features.Admin;
-using GameService.ApiService.Features.Games;
 using GameService.GameCore;
-using GameService.Ludo; // Still needed for LudoJsonContext registration if we don't move it
+using GameService.Ludo;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,10 +20,12 @@ builder.AddServiceDefaults();
 builder.AddNpgsqlDbContext<GameDbContext>("postgresdb");
 builder.AddRedisClient("cache");
 
+// FIX: Ensure JSON deserialization handles lowercase properties from Unity/JS clients
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, GameJsonContext.Default);
     options.SerializerOptions.TypeInfoResolverChain.Insert(1, LudoJsonContext.Default);
+    options.SerializerOptions.PropertyNameCaseInsensitive = true;
 });
 
 builder.Services.AddCors(options =>
@@ -55,20 +56,29 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AdminPolicy", policy => policy.RequireRole("Admin"));
 });
+
 builder.Services.AddIdentityApiEndpoints<ApplicationUser>()
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<GameDbContext>();
 
+// FIX: Explicitly disable Account Confirmation requirement for the API
+builder.Services.Configure<IdentityOptions>(options => 
+{
+    options.SignIn.RequireConfirmedAccount = false; 
+    options.User.RequireUniqueEmail = true;
+    options.Password.RequireNonAlphanumeric = true;
+    options.Password.RequiredLength = 6;
+});
+
 builder.Services.AddScoped<IPasswordHasher<ApplicationUser>, Argon2PasswordHasher>();
 
-builder.Services.AddScoped<IGameEventPublisher, RedisGameEventPublisher>();
+builder.Services.AddSingleton<IGameEventPublisher, RedisGameEventPublisher>();
+
 builder.Services.AddScoped<IPlayerService, PlayerService>();
 builder.Services.AddScoped<IEconomyService, EconomyService>();
 
-// Ensure Ludo assembly is loaded so it can be discovered
 _ = typeof(LudoModule).Assembly;
 
-// Auto-discover games
 var modules = AppDomain.CurrentDomain.GetAssemblies()
     .SelectMany(a => a.GetTypes())
     .Where(t => typeof(IGameModule).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract)
@@ -94,13 +104,11 @@ if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
     await DbInitializer.InitializeAsync(app.Services);
 }
 
-// app.UseHttpsRedirection();
 app.UseCors();
 app.UseRateLimiter();
 
 app.UseAuthentication();
 
-// API Key Middleware for Service-to-Service Admin Access
 app.Use(async (context, next) =>
 {
     var apiKey = context.Request.Headers["X-Admin-Key"].FirstOrDefault();
@@ -125,7 +133,6 @@ GameService.ApiService.Features.Games.GameCatalogEndpoints.MapGameCatalogEndpoin
 
 app.MapHub<GameHub>("/hubs/game");
 
-// Map game modules
 foreach (var module in app.Services.GetServices<IGameModule>())
 {
     module.MapEndpoints(app);

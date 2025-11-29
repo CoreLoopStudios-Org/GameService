@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using GameService.ApiService.Features.Common;
+using GameService.ServiceDefaults;
 using GameService.GameCore;
 using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.DTOs;
@@ -16,9 +17,6 @@ public static class AdminEndpoints
         var group = app.MapGroup("/admin").RequireAuthorization("AdminPolicy");
 
         group.MapGet("/games", GetGames);
-        // group.MapPost("/games", CreateGame); // Generic creation is complex, maybe per game type?
-        // group.MapDelete("/games/{roomId}", DeleteGame); // Generic delete
-
         group.MapGet("/games/{roomId}", GetGameState);
         group.MapDelete("/games/{roomId}", DeleteGame);
         group.MapGet("/players", GetPlayers);
@@ -58,7 +56,6 @@ public static class AdminEndpoints
         GameDbContext db,
         IGameEventPublisher publisher)
     {
-        // Atomic update using ExecuteUpdateAsync
         var rows = await db.PlayerProfiles
             .Where(p => p.UserId == userId)
             .ExecuteUpdateAsync(setters => setters
@@ -67,33 +64,40 @@ public static class AdminEndpoints
 
         if (rows == 0) return Results.NotFound();
 
-        // We need to fetch the new balance to return it, or just return success.
-        // For now, let's fetch it to maintain contract, or change contract.
-        // Fetching is okay here as it's admin action, not high freq game loop.
         var profile = await db.PlayerProfiles.Include(p => p.User).AsNoTracking().FirstAsync(p => p.UserId == userId);
 
         var message = new PlayerUpdatedMessage(
             profile.UserId, 
             profile.Coins, 
             profile.User?.UserName ?? "Unknown", 
-            profile.User?.Email ?? "Unknown");
+            profile.User?.Email ?? "Unknown",
+            PlayerChangeType.Updated,
+            profile.Id);
 
         await publisher.PublishPlayerUpdatedAsync(message);
-
         return Results.Ok(new { NewBalance = profile.Coins });
     }
 
     private static async Task<IResult> DeletePlayer(
         string userId, 
-        UserManager<ApplicationUser> userManager)
+        UserManager<ApplicationUser> userManager,
+        IGameEventPublisher publisher)
     {
         var user = await userManager.FindByIdAsync(userId);
         if (user == null) return Results.NotFound();
 
-        // Soft delete is better, but for now we stick to delete but ensure it's safe?
-        // User asked for fix. Deleting user cascades to profile.
         var result = await userManager.DeleteAsync(user);
         if (!result.Succeeded) return Results.BadRequest(result.Errors);
+
+        var message = new PlayerUpdatedMessage(
+            userId, 
+            0, 
+            user.UserName, 
+            user.Email, 
+            PlayerChangeType.Deleted,
+            0);
+
+        await publisher.PublishPlayerUpdatedAsync(message);
 
         return Results.Ok();
     }
@@ -110,13 +114,8 @@ public static class AdminEndpoints
 
     private static async Task<IResult> DeleteGame(string roomId, IEnumerable<IGameRoomService> services)
     {
-        // We don't know which service owns the room, so we try all?
-        // Or we could ask them if they have it.
-        // For now, try all.
         foreach (var service in services)
         {
-            // We can check if it exists first or just try delete.
-            // Assuming Delete is idempotent or handles not found gracefully.
             await service.DeleteRoomAsync(roomId);
         }
         return Results.Ok();

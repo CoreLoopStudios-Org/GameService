@@ -8,12 +8,17 @@ namespace GameService.ServiceDefaults.Security;
 
 public class Argon2PasswordHasher : IPasswordHasher<ApplicationUser>
 {
+    // Default config for new passwords
+    private const int DefaultDegreeOfParallelism = 1;
+    private const int DefaultMemorySize = 65536;
+    private const int DefaultIterations = 3;
+
     public string HashPassword(ApplicationUser user, string password)
     {
         var salt = CreateSalt();
-        var hash = HashPassword(password, salt);
+        var hash = HashPasswordInternal(password, salt, DefaultDegreeOfParallelism, DefaultMemorySize, DefaultIterations);
 
-        return $"$argon2id$v=19$m=65536,t=3,p=1${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
+        return $"$argon2id$v=19$m={DefaultMemorySize},t={DefaultIterations},p={DefaultDegreeOfParallelism}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
     }
 
     public PasswordVerificationResult VerifyHashedPassword(ApplicationUser user, string hashedPassword, string providedPassword)
@@ -23,23 +28,45 @@ public class Argon2PasswordHasher : IPasswordHasher<ApplicationUser>
             var parts = hashedPassword.Split('$');
             if (parts.Length != 6) return PasswordVerificationResult.Failed;
 
+            // Parse params: m=65536,t=3,p=1
+            var paramsPart = parts[3];
+            var paramMap = ParseParameters(paramsPart);
+
+            if (!paramMap.TryGetValue("m", out int memory) ||
+                !paramMap.TryGetValue("t", out int iterations) ||
+                !paramMap.TryGetValue("p", out int parallelism))
+            {
+                return PasswordVerificationResult.Failed;
+            }
+
             var salt = Convert.FromBase64String(parts[4]);
             var storedHash = Convert.FromBase64String(parts[5]);
 
-            var newHash = HashPassword(providedPassword, salt);
+            var newHash = HashPasswordInternal(providedPassword, salt, parallelism, memory, iterations);
 
             return CryptographicOperations.FixedTimeEquals(storedHash, newHash)
                 ? PasswordVerificationResult.Success
                 : PasswordVerificationResult.Failed;
         }
-        catch (FormatException)
+        catch
         {
             return PasswordVerificationResult.Failed;
         }
-        catch (Exception)
+    }
+
+    private Dictionary<string, int> ParseParameters(string paramsPart)
+    {
+        var result = new Dictionary<string, int>();
+        var pairs = paramsPart.Split(',');
+        foreach (var pair in pairs)
         {
-            return PasswordVerificationResult.Failed;
+            var kv = pair.Split('=');
+            if (kv.Length == 2 && int.TryParse(kv[1], out int val))
+            {
+                result[kv[0]] = val;
+            }
         }
+        return result;
     }
 
     private byte[] CreateSalt()
@@ -50,14 +77,14 @@ public class Argon2PasswordHasher : IPasswordHasher<ApplicationUser>
         return buffer;
     }
 
-    private byte[] HashPassword(string password, byte[] salt)
+    private byte[] HashPasswordInternal(string password, byte[] salt, int parallelism, int memory, int iterations)
     {
-        var argon2 = new Argon2id(Encoding.UTF8.GetBytes(password))
+        using var argon2 = new Argon2id(Encoding.UTF8.GetBytes(password))
         {
             Salt = salt,
-            DegreeOfParallelism = 1,
-            MemorySize = 65536,
-            Iterations = 3
+            DegreeOfParallelism = parallelism,
+            MemorySize = memory,
+            Iterations = iterations
         };
 
         return argon2.GetBytes(32);

@@ -13,46 +13,56 @@ public class RedisLogStreamer(
 {
     private static readonly JsonSerializerOptions _jsonOptions = new() 
     { 
-        PropertyNameCaseInsensitive = true 
+        PropertyNameCaseInsensitive = true,
+        AllowTrailingCommas = true
     };
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var sub = redis.GetSubscriber();
-        var channel = await sub.SubscribeAsync(RedisChannel.Literal(GameConstants.PlayerUpdatesChannel));
-
-        logger.LogInformation("🔴 Connected to Redis. Listening for player updates...");
-
-        try
+        while (!stoppingToken.IsCancellationRequested)
         {
-            await foreach (var message in channel.WithCancellation(stoppingToken))
+            try
             {
-                if (message.Message.IsNullOrEmpty) continue;
+                var sub = redis.GetSubscriber();
+                var channel = await sub.SubscribeAsync(RedisChannel.Literal(GameConstants.PlayerUpdatesChannel));
 
-                try
+                logger.LogInformation("✅ [RedisLogStreamer] Connected and listening on channel: {Channel}", GameConstants.PlayerUpdatesChannel);
+
+                await foreach (var message in channel.WithCancellation(stoppingToken))
                 {
-                    var update = JsonSerializer.Deserialize<PlayerUpdatedMessage>(
-                        (string)message.Message!, 
-                        _jsonOptions);
+                    if (message.Message.IsNullOrEmpty) continue;
 
-                    if (update is not null)
+                    try
                     {
-                        notifier.Notify(update);
+                        var payload = (string)message.Message!;
+                        logger.LogInformation("⚡ [RedisLogStreamer] Received: {Payload}", payload);
+
+                        var update = JsonSerializer.Deserialize<PlayerUpdatedMessage>(payload, _jsonOptions);
+
+                        if (update != null)
+                        {
+                            notifier.Notify(update);
+                        }
+                    }
+                    catch (JsonException jex)
+                    {
+                        logger.LogError(jex, "❌ [RedisLogStreamer] JSON Deserialization failed for message: {Message}", message.Message);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "❌ [RedisLogStreamer] Error processing message");
                     }
                 }
-                catch (JsonException)
-                {
-                    logger.LogWarning("Received invalid JSON in player_updates");
-                }
             }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        finally
-        {
-            if (redis.IsConnected)
-                await sub.UnsubscribeAsync(RedisChannel.Literal(GameConstants.PlayerUpdatesChannel));
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "⚠️ [RedisLogStreamer] Connection failed. Retrying in 5s...");
+                await Task.Delay(5000, stoppingToken);
+            }
         }
     }
 }

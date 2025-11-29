@@ -1,6 +1,6 @@
 using GameService.ServiceDefaults.DTOs;
 
-namespace GameService.ApiService.Features.Common;
+namespace GameService.ServiceDefaults;
 
 public interface IGameEventPublisher
 {

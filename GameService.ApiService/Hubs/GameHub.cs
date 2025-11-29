@@ -26,8 +26,6 @@ public class GameHub : Hub
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        // Note: We don't track which rooms the user was in, so we can't easily notify them here
-        // without a connection mapping service. For now, we rely on explicit LeaveRoom or session timeout.
         await base.OnDisconnectedAsync(exception);
     }
     

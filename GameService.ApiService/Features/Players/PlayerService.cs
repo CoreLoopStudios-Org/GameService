@@ -1,4 +1,4 @@
-using GameService.ApiService.Features.Common;
+using GameService.ServiceDefaults;
 using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.DTOs;
 using Microsoft.EntityFrameworkCore;
@@ -16,32 +16,25 @@ public class PlayerService(GameDbContext db, IGameEventPublisher publisher) : IP
     {
         var profile = await db.PlayerProfiles
             .AsNoTracking()
+            .Include(p => p.User)
             .FirstOrDefaultAsync(p => p.UserId == userId);
 
-        if (profile is null)
+        if (profile is not null)
         {
-            var newProfile = new PlayerProfile { UserId = userId, Coins = 100 };
-            db.PlayerProfiles.Add(newProfile);
-            try 
-            {
-                await db.SaveChangesAsync();
-                profile = newProfile;
-                
-                var user = await db.Users.FindAsync(userId);
-                var message = new PlayerUpdatedMessage(
-                    userId, 
-                    profile.Coins, 
-                    user?.UserName ?? "Unknown", 
-                    user?.Email ?? "Unknown");
-                await publisher.PublishPlayerUpdatedAsync(message);
-            }
-            catch (DbUpdateException) 
-            {
-                db.ChangeTracker.Clear();
-                profile = await db.PlayerProfiles.AsNoTracking().FirstAsync(p => p.UserId == userId);
-            }
+            var message = new PlayerUpdatedMessage(
+                profile.UserId,
+                profile.Coins,
+                profile.User?.UserName ?? "Unknown",
+                profile.User?.Email ?? "Unknown",
+                PlayerChangeType.Updated,
+                profile.Id
+            );
+
+            await publisher.PublishPlayerUpdatedAsync(message);
+
+            return new PlayerProfileResponse(profile.UserId, profile.Coins);
         }
-        
-        return new PlayerProfileResponse(profile.UserId, profile.Coins);
+
+        return null;
     }
 }
