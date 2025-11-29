@@ -13,7 +13,7 @@ public class RedisLudoRepository(IConnectionMultiplexer redis) : ILudoRepository
 
     public async Task SaveGameAsync(LudoContext context)
     {
-        byte[] stateBytes = SerializeState(context.Engine.State);
+        byte[] stateBytes = SerializeState(context.State);
         await _db.StringSetAsync(GetStateKey(context.RoomId), stateBytes);
         
         // We also save meta in case it changed (e.g. players joined)
@@ -30,7 +30,7 @@ public class RedisLudoRepository(IConnectionMultiplexer redis) : ILudoRepository
         LudoState state = DeserializeState((byte[])stateBytes!);
         var meta = JsonSerializer.Deserialize((string)metaJson!, LudoJsonContext.Default.LudoRoomMeta);
         
-        return new LudoContext(roomId, new LudoEngine(state, new ServerDiceRoller()), meta!);
+        return new LudoContext(roomId, state, meta!);
     }
 
     public async Task<List<LudoContext>> GetActiveGamesAsync()
@@ -60,15 +60,15 @@ public class RedisLudoRepository(IConnectionMultiplexer redis) : ILudoRepository
         
         // Lua script to atomically check capacity and join
         const string script = @"
-            var metaJson = redis.call('GET', KEYS[1])
+            local metaJson = redis.call('GET', KEYS[1])
             if not metaJson then return 0 end
             
-            var meta = cjson.decode(metaJson)
+            local meta = cjson.decode(metaJson)
             
             if meta.PlayerSeats[ARGV[1]] then return 1 end
             
             -- Count keys in PlayerSeats
-            var count = 0
+            local count = 0
             for _ in pairs(meta.PlayerSeats) do count = count + 1 end
             
             if count >= 2 then return 0 end
@@ -89,21 +89,13 @@ public class RedisLudoRepository(IConnectionMultiplexer redis) : ILudoRepository
         await _db.SetAddAsync(ActiveRoomsKey, roomId);
     }
 
-    private static unsafe byte[] SerializeState(LudoState state)
+    private static byte[] SerializeState(LudoState state)
     {
-        var bytes = new byte[sizeof(LudoState)];
-        fixed (byte* b = bytes) 
-        { 
-            *(LudoState*)b = state; 
-        }
-        return bytes;
+        return System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(state, LudoJsonContext.Default.LudoState);
     }
     
-    private static unsafe LudoState DeserializeState(byte[] bytes)
+    private static LudoState DeserializeState(byte[] bytes)
     {
-        fixed (byte* ptr = bytes) 
-        { 
-            return *(LudoState*)ptr; 
-        }
+        return System.Text.Json.JsonSerializer.Deserialize<LudoState>(bytes, LudoJsonContext.Default.LudoState)!;
     }
 }

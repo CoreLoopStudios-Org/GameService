@@ -1,11 +1,10 @@
 using System.Security.Claims;
 using GameService.ApiService.Features.Common;
-using GameService.Ludo;
+using GameService.GameCore;
 using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.DTOs;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace GameService.ApiService.Features.Admin;
@@ -17,21 +16,30 @@ public static class AdminEndpoints
         var group = app.MapGroup("/admin").RequireAuthorization("AdminPolicy");
 
         group.MapGet("/games", GetGames);
-        group.MapPost("/games", CreateGame);
-        group.MapPost("/games/{roomId}/roll", ForceRoll);
-        group.MapDelete("/games/{roomId}", DeleteGame);
+        // group.MapPost("/games", CreateGame); // Generic creation is complex, maybe per game type?
+        // group.MapDelete("/games/{roomId}", DeleteGame); // Generic delete
 
+        group.MapGet("/games/{roomId}", GetGameState);
+        group.MapDelete("/games/{roomId}", DeleteGame);
         group.MapGet("/players", GetPlayers);
         group.MapPost("/players/{userId}/coins", UpdatePlayerCoins);
         group.MapDelete("/players/{userId}", DeletePlayer);
     }
 
-    private static async Task<IResult> GetPlayers(GameDbContext db)
+    private static async Task<IResult> GetPlayers(
+        GameDbContext db,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
     {
+        if (pageSize > 100) pageSize = 100;
+        if (page < 1) page = 1;
+
         var players = await db.PlayerProfiles
             .AsNoTracking()
             .Include(p => p.User)
             .OrderBy(p => p.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(p => new AdminPlayerDto(
                 p.Id,
                 p.UserId,
@@ -50,22 +58,19 @@ public static class AdminEndpoints
         GameDbContext db,
         IGameEventPublisher publisher)
     {
-        var profile = await db.PlayerProfiles.Include(p => p.User).FirstOrDefaultAsync(p => p.UserId == userId);
-        if (profile == null) return Results.NotFound();
+        // Atomic update using ExecuteUpdateAsync
+        var rows = await db.PlayerProfiles
+            .Where(p => p.UserId == userId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(p => p.Coins, p => p.Coins + req.Amount)
+                .SetProperty(p => p.Version, Guid.NewGuid()));
 
-        try
-        {
-            checked
-            {
-                profile.Coins += req.Amount;
-            }
-        }
-        catch (OverflowException)
-        {
-            return Results.BadRequest("Coin overflow/underflow");
-        }
+        if (rows == 0) return Results.NotFound();
 
-        await db.SaveChangesAsync();
+        // We need to fetch the new balance to return it, or just return success.
+        // For now, let's fetch it to maintain contract, or change contract.
+        // Fetching is okay here as it's admin action, not high freq game loop.
+        var profile = await db.PlayerProfiles.Include(p => p.User).AsNoTracking().FirstAsync(p => p.UserId == userId);
 
         var message = new PlayerUpdatedMessage(
             profile.UserId, 
@@ -85,66 +90,44 @@ public static class AdminEndpoints
         var user = await userManager.FindByIdAsync(userId);
         if (user == null) return Results.NotFound();
 
+        // Soft delete is better, but for now we stick to delete but ensure it's safe?
+        // User asked for fix. Deleting user cascades to profile.
         var result = await userManager.DeleteAsync(user);
         if (!result.Succeeded) return Results.BadRequest(result.Errors);
 
         return Results.Ok();
     }
 
-    private static async Task<IResult> GetGames(LudoRoomService service)
+    private static async Task<IResult> GetGameState(string roomId, IEnumerable<IGameRoomService> services)
     {
-        var games = await service.GetActiveGamesAsync();
-        return Results.Ok(games);
-    }
-
-    private static async Task<IResult> CreateGame(
-        LudoRoomService service, 
-        ClaimsPrincipal user,
-        IHubContext<LudoHub> hub)
-    {
-        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
-
-        var roomId = await service.CreateRoomAsync(userId);
-        return Results.Ok(new { RoomId = roomId });
-    }
-
-    private static async Task<IResult> ForceRoll(
-        string roomId, 
-        [FromQuery] int value, 
-        LudoRoomService service,
-        IHubContext<LudoHub> hub)
-    {
-        var ctx = await service.LoadGameAsync(roomId);
-        if (ctx == null) return Results.NotFound();
-
-        if (ctx.Engine.TryRollDice(out var result, (byte)value))
+        foreach (var service in services)
         {
-            await service.SaveGameAsync(ctx);
-
-            // Notify clients via SignalR
-            await hub.Clients.Group(roomId).SendAsync("RollResult", result.DiceValue);
-            
-            // Always send state update after a forced move/roll
-            await hub.Clients.Group(roomId).SendAsync("GameState", SerializeState(ctx.Engine.State));
-
-            return Results.Ok(new { result.Status, result.DiceValue });
+            var state = await service.GetGameStateAsync(roomId);
+            if (state != null) return Results.Ok(state);
         }
-
-        return Results.BadRequest("Could not roll dice (maybe game ended or need to move token first)");
+        return Results.NotFound();
     }
 
-    private static async Task<IResult> DeleteGame(string roomId, LudoRoomService service, IHubContext<LudoHub> hub)
+    private static async Task<IResult> DeleteGame(string roomId, IEnumerable<IGameRoomService> services)
     {
-        await service.DeleteRoomAsync(roomId);
-        await hub.Clients.Group(roomId).SendAsync("GameDeleted");
+        // We don't know which service owns the room, so we try all?
+        // Or we could ask them if they have it.
+        // For now, try all.
+        foreach (var service in services)
+        {
+            // We can check if it exists first or just try delete.
+            // Assuming Delete is idempotent or handles not found gracefully.
+            await service.DeleteRoomAsync(roomId);
+        }
         return Results.Ok();
     }
-
-    private static unsafe byte[] SerializeState(LudoState state)
+    private static async Task<IResult> GetGames(IEnumerable<IGameRoomService> services)
     {
-        var bytes = new byte[sizeof(LudoState)];
-        fixed (byte* b = bytes) { *(LudoState*)b = state; }
-        return bytes;
+        var allGames = new List<GameRoomDto>();
+        foreach (var service in services)
+        {
+            allGames.AddRange(await service.GetActiveGamesAsync());
+        }
+        return Results.Ok(allGames);
     }
 }

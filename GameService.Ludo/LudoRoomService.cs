@@ -1,11 +1,12 @@
 using System.Text.Json;
+using GameService.GameCore;
 using StackExchange.Redis;
 
 namespace GameService.Ludo;
 
-public class LudoRoomService(ILudoRepository repository)
+public class LudoRoomService(ILudoRepository repository) : IGameRoomService
 {
-    public async Task<string?> CreateRoomAsync(string hostUserId)
+    public async Task<string> CreateRoomAsync(string hostUserId)
     {
         string roomId = Guid.NewGuid().ToString("N")[..8];
 
@@ -17,16 +18,28 @@ public class LudoRoomService(ILudoRepository repository)
             IsPublic = true 
         };
 
-        var context = new LudoContext(roomId, engine, meta);
+        var context = new LudoContext(roomId, engine.State, meta);
         await repository.SaveGameAsync(context);
         await repository.AddActiveGameAsync(roomId);
         
         return roomId;
     }
 
-    public async Task<List<LudoContext>> GetActiveGamesAsync()
+    public async Task<List<GameRoomDto>> GetActiveGamesAsync()
     {
-        return await repository.GetActiveGamesAsync();
+        var games = await repository.GetActiveGamesAsync();
+        return games.Select(g => new GameRoomDto(
+            g.RoomId, 
+            "Ludo", 
+            g.Meta.PlayerSeats.Count, 
+            g.Meta.IsPublic, 
+            g.Meta.PlayerSeats
+        )).ToList();
+    }
+
+    public async Task<object?> GetGameStateAsync(string roomId)
+    {
+        return await repository.LoadGameAsync(roomId);
     }
 
     public async Task DeleteRoomAsync(string roomId)
@@ -57,4 +70,4 @@ public record LudoRoomMeta
     public string GameType { get; set; } = "Ludo";
 }
 
-public record LudoContext(string RoomId, LudoEngine Engine, LudoRoomMeta Meta);
+public record LudoContext(string RoomId, LudoState State, LudoRoomMeta Meta);

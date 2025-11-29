@@ -15,10 +15,12 @@ builder.AddRedisOutputCache("cache");
 builder.AddRedisClient("cache");
 
 builder.Services.AddSingleton<PlayerUpdateNotifier>();
-builder.Services.AddHttpClient<GameAdminService>(client => 
+builder.Services.AddHttpClient<GameAdminService>((sp, client) => 
 {
     client.BaseAddress = new("http://apiservice");
-    client.DefaultRequestHeaders.Add("X-Admin-Key", "SecretAdminKey123!");
+    var config = sp.GetRequiredService<IConfiguration>();
+    var apiKey = config["AdminSettings:ApiKey"] ?? "SecretAdminKey123!";
+    client.DefaultRequestHeaders.Add("X-Admin-Key", apiKey);
 });
 builder.Services.AddHostedService<RedisLogStreamer>();
 

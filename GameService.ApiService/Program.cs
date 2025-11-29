@@ -11,7 +11,8 @@ using System.Threading.RateLimiting;
 
 using GameService.ApiService.Features.Common;
 using GameService.ApiService.Features.Admin;
-using GameService.Ludo;
+using GameService.GameCore;
+using GameService.Ludo; // Still needed for LudoJsonContext registration if we don't move it
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -63,8 +64,19 @@ builder.Services.AddScoped<IGameEventPublisher, RedisGameEventPublisher>();
 builder.Services.AddScoped<IPlayerService, PlayerService>();
 builder.Services.AddScoped<IEconomyService, EconomyService>();
 
-builder.Services.AddSingleton<ILudoRepository, RedisLudoRepository>();
-builder.Services.AddSingleton<LudoRoomService>();
+// Auto-discover games
+var modules = AppDomain.CurrentDomain.GetAssemblies()
+    .SelectMany(a => a.GetTypes())
+    .Where(t => typeof(IGameModule).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract)
+    .Select(Activator.CreateInstance)
+    .Cast<IGameModule>()
+    .ToList();
+
+foreach (var module in modules)
+{
+    module.RegisterServices(builder.Services);
+    builder.Services.AddSingleton(module);
+}
 
 builder.Services.AddSignalR()
     .AddStackExchangeRedis(builder.Configuration.GetConnectionString("cache") ?? throw new InvalidOperationException("Redis connection string is missing"))
@@ -84,9 +96,13 @@ app.UseRateLimiter();
 
 app.UseAuthentication();
 
+// API Key Middleware for Service-to-Service Admin Access
 app.Use(async (context, next) =>
 {
-    if (context.Request.Headers.TryGetValue("X-Admin-Key", out var key) && key == "SecretAdminKey123!")
+    var apiKey = context.Request.Headers["X-Admin-Key"].FirstOrDefault();
+    var configuredKey = context.RequestServices.GetRequiredService<IConfiguration>()["AdminSettings:ApiKey"];
+
+    if (!string.IsNullOrEmpty(apiKey) && !string.IsNullOrEmpty(configuredKey) && apiKey == configuredKey)
     {
         var claims = new[] { new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, "Admin") };
         var identity = new System.Security.Claims.ClaimsIdentity(claims, "ApiKey");
@@ -103,7 +119,12 @@ app.MapEconomyEndpoints();
 app.MapAdminEndpoints();
 
 app.MapHub<GameHub>("/hubs/game");
-app.MapHub<LudoHub>("/hubs/ludo"); 
+
+// Map game modules
+foreach (var module in app.Services.GetServices<IGameModule>())
+{
+    module.MapEndpoints(app);
+}
 
 app.MapDefaultEndpoints();
 app.Run();

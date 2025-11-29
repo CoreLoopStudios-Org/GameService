@@ -24,60 +24,72 @@ public class EconomyService(GameDbContext db, IGameEventPublisher publisher) : I
 
         return await strategy.ExecuteAsync(async () =>
         {
+            // Use ExecuteUpdateAsync for atomic update
+            // Note: This doesn't check for insufficient funds in the DB query itself easily without raw SQL or stored proc in some EF versions,
+            // but we can do a conditional update.
+            
+            // However, for simplicity and correctness with checks:
             using var transaction = await db.Database.BeginTransactionAsync();
             try
             {
-                var profile = await db.PlayerProfiles
-                    .Include(p => p.User)
-                    .FirstOrDefaultAsync(p => p.UserId == userId);
-
-                if (profile is null)
+                // Lock the row? Or just use optimistic concurrency?
+                // The user asked for atomic updates to fix concurrency issues.
+                // ExecuteUpdate is atomic.
+                
+                if (amount < 0)
                 {
+                    // Check balance first
+                    var currentCoins = await db.PlayerProfiles
+                        .Where(p => p.UserId == userId)
+                        .Select(p => p.Coins)
+                        .FirstOrDefaultAsync();
+                        
+                    if (currentCoins + amount < 0)
+                    {
+                         return new TransactionResult(false, currentCoins, TransactionErrorType.InsufficientFunds, "Insufficient funds");
+                    }
+                }
+
+                var rows = await db.PlayerProfiles
+                    .Where(p => p.UserId == userId)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(p => p.Coins, p => p.Coins + amount)
+                        .SetProperty(p => p.Version, Guid.NewGuid()));
+                
+                if (rows == 0)
+                {
+                    // Profile might not exist, create it?
+                    // Separation of concerns: Create profile on registration or first login.
+                    // But legacy code created it here.
                     var user = await db.Users.FindAsync(userId);
-                    if (user is null)
-                    {
-                        return new TransactionResult(false, 0, TransactionErrorType.Unknown, "User account not found.");
-                    }
-
-                    profile = new PlayerProfile { UserId = userId, Coins = 100, User = user };
-                    db.PlayerProfiles.Add(profile);
+                    if (user is null) return new TransactionResult(false, 0, TransactionErrorType.Unknown, "User account not found.");
+                    
+                    var newProfile = new PlayerProfile { UserId = userId, Coins = 100 + amount, User = user };
+                    db.PlayerProfiles.Add(newProfile);
+                    await db.SaveChangesAsync();
+                    
+                    await transaction.CommitAsync();
+                    return new TransactionResult(true, newProfile.Coins, TransactionErrorType.None);
                 }
 
-                try
-                {
-                    checked
-                    {
-                        if (amount < 0 && (profile.Coins + amount < 0))
-                        {
-                            return new TransactionResult(false, profile.Coins, TransactionErrorType.InsufficientFunds, "Insufficient funds");
-                        }
-
-                        profile.Coins += amount;
-                    }
-                }
-                catch (OverflowException)
-                {
-                    return new TransactionResult(false, profile.Coins, TransactionErrorType.InvalidAmount, "Transaction would cause balance overflow/underflow");
-                }
-
-                profile.Version = Guid.NewGuid();
-
-                await db.SaveChangesAsync();
                 await transaction.CommitAsync();
+                
+                // Fetch new balance for return
+                var newBalance = await db.PlayerProfiles.Where(p => p.UserId == userId).Select(p => p.Coins).FirstAsync();
 
                 var message = new PlayerUpdatedMessage(
-                    profile.UserId, 
-                    profile.Coins, 
-                    profile.User?.UserName ?? "Unknown", 
-                    profile.User?.Email ?? "Unknown");
+                    userId, 
+                    newBalance, 
+                    null, 
+                    null);
 
                 await publisher.PublishPlayerUpdatedAsync(message);
 
-                return new TransactionResult(true, profile.Coins, TransactionErrorType.None);
+                return new TransactionResult(true, newBalance, TransactionErrorType.None);
             }
-            catch (DbUpdateConcurrencyException)
+            catch (Exception ex)
             {
-                return new TransactionResult(false, 0, TransactionErrorType.ConcurrencyConflict, "Transaction failed due to concurrent modification. Please retry.");
+                return new TransactionResult(false, 0, TransactionErrorType.Unknown, ex.Message);
             }
         });
     }

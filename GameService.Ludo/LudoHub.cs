@@ -25,7 +25,7 @@ public class LudoHub(LudoRoomService roomService) : Hub
 
             var ctx = await roomService.LoadGameAsync(roomId);
             if(ctx != null)
-                await Clients.Caller.SendAsync("GameState", SerializeState(ctx.Engine.State));
+                await Clients.Caller.SendAsync("GameState", SerializeState(ctx.State));
                 
             await Clients.Group(roomId).SendAsync("PlayerJoined", UserId);
             return true;
@@ -39,21 +39,27 @@ public class LudoHub(LudoRoomService roomService) : Hub
         if (ctx == null) return;
 
         if (!ctx.Meta.PlayerSeats.TryGetValue(UserId, out int mySeat)) return;
-        if (ctx.Engine.State.CurrentPlayer != mySeat) 
+        
+        // Reconstruct engine
+        var engine = new LudoEngine(ctx.State, new ServerDiceRoller());
+        
+        if (engine.State.CurrentPlayer != mySeat) 
         {
             await Clients.Caller.SendAsync("Error", "Not your turn");
             return;
         }
 
-        if (ctx.Engine.TryRollDice(out var result))
+        if (engine.TryRollDice(out var result))
         {
-            await roomService.SaveGameAsync(ctx);
+            // Update state in context
+            var newCtx = ctx with { State = engine.State };
+            await roomService.SaveGameAsync(newCtx);
 
             await Clients.Group(roomId).SendAsync("RollResult", result.DiceValue);
 
             if (result.Status == LudoStatus.TurnPassed || result.Status == LudoStatus.ForfeitTurn)
             {
-                await Clients.Group(roomId).SendAsync("GameState", SerializeState(ctx.Engine.State));
+                await Clients.Group(roomId).SendAsync("GameState", SerializeState(engine.State));
             }
         }
     }
@@ -64,13 +70,17 @@ public class LudoHub(LudoRoomService roomService) : Hub
         if (ctx == null) return;
 
         if (!ctx.Meta.PlayerSeats.TryGetValue(UserId, out int mySeat)) return;
-        if (ctx.Engine.State.CurrentPlayer != mySeat) return;
+        
+        var engine = new LudoEngine(ctx.State, new ServerDiceRoller());
+        
+        if (engine.State.CurrentPlayer != mySeat) return;
 
-        if (ctx.Engine.TryMoveToken(tokenIndex, out var result))
+        if (engine.TryMoveToken(tokenIndex, out var result))
         {
-            await roomService.SaveGameAsync(ctx);
+            var newCtx = ctx with { State = engine.State };
+            await roomService.SaveGameAsync(newCtx);
 
-            await Clients.Group(roomId).SendAsync("GameState", SerializeState(ctx.Engine.State));
+            await Clients.Group(roomId).SendAsync("GameState", SerializeState(engine.State));
             
             if ((result.Status & LudoStatus.GameWon) != 0)
             {

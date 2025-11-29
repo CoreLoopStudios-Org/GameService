@@ -198,5 +198,5 @@ public class LudoEngine(IDiceRoller roller)
 
 public interface IDiceRoller { byte Roll(); }
 public class ServerDiceRoller : IDiceRoller {
-    public byte Roll() => (byte)Random.Shared.Next(1, 7);
+    public byte Roll() => (byte)System.Security.Cryptography.RandomNumberGenerator.GetInt32(1, 7);
 }

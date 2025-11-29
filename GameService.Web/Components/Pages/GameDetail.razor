@@ -3,7 +3,7 @@
 @rendermode InteractiveServer
 @inject GameAdminService AdminService
 @inject NavigationManager Nav
-@using GameService.Web.Components.Ludo
+@using System.Text.Json
 
 <PageTitle>Game Inspector: @RoomId</PageTitle>
 
@@ -11,7 +11,7 @@
     <a href="games" class="btn btn-outline-secondary">&larr; Back to Games</a>
 </div>
 
-@if (game == null)
+@if (gameState == null)
 {
     if (notFound)
     {
@@ -24,23 +24,20 @@
 }
 else
 {
-    @if (game.Meta.GameType == "Ludo")
-    {
-        <LudoAdminPanel Game="@game" 
-                        OnRefresh="LoadGame" 
-                        OnForceRoll="ForceRoll" 
-                        OnTerminate="DeleteGame" />
-    }
-    else
-    {
-        <div class="alert alert-warning">Unknown game type: @game.Meta.GameType</div>
-    }
+    <div class="card">
+        <div class="card-header">
+            Game State (Raw)
+        </div>
+        <div class="card-body">
+            <pre>@JsonSerializer.Serialize(gameState, new JsonSerializerOptions { WriteIndented = true })</pre>
+        </div>
+    </div>
 }
 
 @code {
     [Parameter] public string RoomId { get; set; } = "";
     
-    private LudoContext? game;
+    private JsonElement? gameState;
     private bool notFound = false;
 
     protected override async Task OnInitializedAsync()
@@ -50,34 +47,9 @@ else
 
     private async Task LoadGame()
     {
-        var games = await AdminService.GetActiveGamesAsync();
-        game = games.FirstOrDefault(g => g.RoomId == RoomId);
+        gameState = await AdminService.GetGameStateAsync(RoomId);
         
-        if (game == null) notFound = true;
+        if (gameState == null) notFound = true;
         else notFound = false;
     }
-
-    private async Task ForceRoll(int value)
-    {
-        try 
-        {
-            await AdminService.ForceRollAsync(RoomId, value);
-            await Task.Delay(500); // Wait for propagation
-            await LoadGame();
-        }
-        catch (Exception ex)
-        {
-            await JSRuntime.InvokeVoidAsync("alert", "Failed to force roll: " + ex.Message);
-        }
-    }
-
-    private async Task DeleteGame()
-    {
-        if (!await JSRuntime.InvokeAsync<bool>("confirm", "Terminate this game?")) return;
-        
-        await AdminService.DeleteGameAsync(RoomId);
-        Nav.NavigateTo("games");
-    }
-
-    [Inject] IJSRuntime JSRuntime { get; set; } = default!;
 }
