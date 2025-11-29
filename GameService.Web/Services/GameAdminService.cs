@@ -73,4 +73,9 @@ public class GameAdminService(HttpClient http)
         var response = await http.DeleteAsync($"/admin/games/{roomId}");
         response.EnsureSuccessStatusCode();
     }
+
+    public async Task<List<SupportedGameDto>> GetSupportedGamesAsync()
+    {
+        return await http.GetFromJsonAsync<List<SupportedGameDto>>("/games/supported") ?? [];
+    }
 }

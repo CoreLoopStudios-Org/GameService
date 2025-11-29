@@ -11,6 +11,7 @@ using System.Threading.RateLimiting;
 
 using GameService.ApiService.Features.Common;
 using GameService.ApiService.Features.Admin;
+using GameService.ApiService.Features.Games;
 using GameService.GameCore;
 using GameService.Ludo; // Still needed for LudoJsonContext registration if we don't move it
 
@@ -63,6 +64,9 @@ builder.Services.AddScoped<IPasswordHasher<ApplicationUser>, Argon2PasswordHashe
 builder.Services.AddScoped<IGameEventPublisher, RedisGameEventPublisher>();
 builder.Services.AddScoped<IPlayerService, PlayerService>();
 builder.Services.AddScoped<IEconomyService, EconomyService>();
+
+// Ensure Ludo assembly is loaded so it can be discovered
+_ = typeof(LudoModule).Assembly;
 
 // Auto-discover games
 var modules = AppDomain.CurrentDomain.GetAssemblies()
@@ -117,6 +121,7 @@ app.MapAuthEndpoints();
 app.MapPlayerEndpoints();
 app.MapEconomyEndpoints();
 app.MapAdminEndpoints();
+GameService.ApiService.Features.Games.GameCatalogEndpoints.MapGameCatalogEndpoints(app);
 
 app.MapHub<GameHub>("/hubs/game");
 
