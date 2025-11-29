@@ -2,7 +2,7 @@ namespace GameService.GameCore;
 
 public interface IGameRoomService
 {
-    Task<string> CreateRoomAsync(string hostUserId);
+    Task<string> CreateRoomAsync(string? hostUserId, int playerCount = 4);
     Task DeleteRoomAsync(string roomId);
     Task<bool> JoinRoomAsync(string roomId, string userId);
     Task<object?> GetGameStateAsync(string roomId);

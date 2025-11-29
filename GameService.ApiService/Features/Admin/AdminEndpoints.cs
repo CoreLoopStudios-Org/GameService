@@ -16,6 +16,7 @@ public static class AdminEndpoints
     {
         var group = app.MapGroup("/admin").RequireAuthorization("AdminPolicy");
 
+        group.MapPost("/games", CreateGame);
         group.MapGet("/games", GetGames);
         group.MapGet("/games/{roomId}", GetGameState);
         group.MapDelete("/games/{roomId}", DeleteGame);
@@ -129,4 +130,20 @@ public static class AdminEndpoints
         }
         return Results.Ok(allGames);
     }
+    
+    private static async Task<IResult> CreateGame(
+        [FromBody] CreateGameRequest req,
+        IEnumerable<IGameRoomService> services)
+    {
+        // Find the service for Ludo (or extend request to specify type)
+        var service = services.FirstOrDefault(); 
+        if (service == null) return Results.BadRequest("No game services available");
+
+        // Host is null because Admin is creating it, not joining it yet
+        var roomId = await service.CreateRoomAsync(null, req.PlayerCount);
+    
+        return Results.Ok(new { RoomId = roomId });
+    }
+    
+    public record CreateGameRequest(int PlayerCount);
 }

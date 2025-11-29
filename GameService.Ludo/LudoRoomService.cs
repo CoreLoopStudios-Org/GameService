@@ -6,17 +6,23 @@ namespace GameService.Ludo;
 
 public class LudoRoomService(ILudoRepository repository) : IGameRoomService
 {
-    public async Task<string> CreateRoomAsync(string hostUserId)
+    public async Task<string> CreateRoomAsync(string? hostUserId, int playerCount = 4)
     {
         string roomId = Guid.NewGuid().ToString("N")[..8];
 
-        var engine = new LudoEngine(new ServerDiceRoller());
-        engine.InitNewGame(2);
+        var engine = new LudoEngine(new ServerDiceRoller()); ;
 
         var meta = new LudoRoomMeta { 
-            PlayerSeats = new() { { hostUserId, 0 } },
-            IsPublic = true 
+            PlayerSeats = new(),
+            IsPublic = true,
+            MaxPlayers = playerCount // Add this to LudoRoomMeta below
         };
+
+        // If a host exists (User created), add them. If null (Admin created), empty room.
+        if (!string.IsNullOrEmpty(hostUserId))
+        {
+            meta.PlayerSeats.Add(hostUserId, 0); // Seat 0
+        }
 
         var context = new LudoContext(roomId, engine.State, meta);
         await repository.SaveGameAsync(context);
@@ -68,6 +74,7 @@ public record LudoRoomMeta
     public Dictionary<string, int> PlayerSeats { get; set; } = new();
     public bool IsPublic { get; set; }
     public string GameType { get; set; } = "Ludo";
+    public int MaxPlayers { get; set; } = 4;
 }
 
 public record LudoContext(string RoomId, LudoState State, LudoRoomMeta Meta);

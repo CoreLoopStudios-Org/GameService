@@ -51,4 +51,11 @@ public class GameAdminService(HttpClient http)
     {
         return await http.GetFromJsonAsync<List<SupportedGameDto>>("/games/supported") ?? [];
     }
+    
+    public async Task CreateGameAsync(int playerCount)
+    {
+        // This uses the DI injected HttpClient which knows that "apiservice" = localhost:port
+        var response = await http.PostAsJsonAsync("/admin/games", new { PlayerCount = playerCount });
+        response.EnsureSuccessStatusCode();
+    }
 }

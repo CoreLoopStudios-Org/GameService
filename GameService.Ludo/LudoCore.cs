@@ -74,19 +74,7 @@ public class LudoEngine(IDiceRoller roller)
     {
         State = state;
     }
-
-    public void InitNewGame(int playerCount)
-    {
-        for (int i = 0; i < 16; i++) State.Tokens[i] = 0;
-        
-        State.CurrentPlayer = 0;
-        State.LastDiceRoll = 0;
-        State.Winner = 255;
-        State.TurnId = 1;
-
-        State.ActiveSeats = (byte)(playerCount == 2 ? 0b00000101 : 0b00001111);
-        if ((State.ActiveSeats & 1) == 0) State.AdvanceTurnPointer();
-    }
+    
 
     public bool TryRollDice(out RollResult result, byte? forcedDice = null)
     {

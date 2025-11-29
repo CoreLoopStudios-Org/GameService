@@ -18,7 +18,6 @@ public class LudoModule : IGameModule
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/games/ludo").RequireAuthorization();
-        group.MapHub<LudoHub>("/hubs/ludo");
+        endpoints.MapHub<LudoHub>("/hubs/ludo").RequireAuthorization();
     }
 }

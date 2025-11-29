@@ -9,10 +9,12 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Active Games</h1>
-    <div>
-        <!-- Create Game removed as it requires game type selection now -->
+    <div class="d-flex gap-2">
+        <button class="btn btn-success" @onclick="CreateGame">
+            <i class="bi bi-plus-lg"></i> Create 4-Player Room
+        </button>
         <button class="btn btn-outline-primary" @onclick="LoadGames">
-            <i class="bi bi-arrow-clockwise"></i> Refresh
+            Refresh
         </button>
     </div>
 </div>
@@ -77,6 +79,20 @@ else
     private async Task LoadGames()
     {
         games = await AdminService.GetActiveGamesAsync();
+    }
+
+    private async Task CreateGame()
+    {
+        // FIX: Use the injected service instead of creating a raw HttpClient
+        try 
+        {
+            await AdminService.CreateGameAsync(4);
+            await LoadGames(); // Refresh list after creation
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error creating game: {ex.Message}");
+        }
     }
     
     [Inject] IJSRuntime JSRuntime { get; set; } = default!;
