@@ -76,30 +76,22 @@ public class LudoEngine(IDiceRoller roller)
         State = state;
     }
 
-    // THIS IS THE METHOD YOU WERE MISSING OR WAS NOT PUBLIC
     public void InitNewGame(int playerCount)
     {
-        // 1. Reset Tokens
         for (int i = 0; i < 16; i++) State.Tokens[i] = 0;
-        
-        // 2. Reset Game Globals
+
         State.CurrentPlayer = 0;
         State.LastDiceRoll = 0;
-        State.Winner = 255; // 255 = No Winner
+        State.Winner = 255;
         State.TurnId = 1;
 
-        // 3. Set Active Seats (Bitmask)
-        // 2 Players: Seat 0 & 2 (Binary 0101 = 5)
-        // 4 Players: Seat 0,1,2,3 (Binary 1111 = 15)
         State.ActiveSeats = (byte)(playerCount == 2 ? 0b00000101 : 0b00001111);
-        
-        // 4. Ensure Seat 0 is actually active, otherwise find first active
+
         if ((State.ActiveSeats & 1) == 0) State.AdvanceTurnPointer();
     }
 
     public bool TryRollDice(out RollResult result, byte? forcedDice = null)
     {
-        // 255 means "No Winner". If it is 0, 1, 2, or 3, someone has won.
         if (State.Winner != 255) { result = new(LudoStatus.ErrorGameEnded, 0); return false; }
         if (State.LastDiceRoll != 0) { result = new(LudoStatus.ErrorNeedToRoll, State.LastDiceRoll); return false; }
 
@@ -200,8 +192,6 @@ public class LudoEngine(IDiceRoller roller)
     }
 
     private bool TryCapture(int myPid, byte myPos, out int vPid, out int vTid) {
-        // Basic Capture Logic Placeholder
-        // Implement full collision logic here if needed
         vPid = -1; vTid = -1;
         return false; 
     }

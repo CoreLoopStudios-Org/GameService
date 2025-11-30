@@ -57,11 +57,6 @@ public class RedisLudoRepository(IConnectionMultiplexer redis) : ILudoRepository
     {
         var metaKey = GetMetaKey(roomId);
 
-        // This script handles:
-        // 1. Checking if game exists
-        // 2. Checking if user is already in
-        // 3. Checking max players
-        // 4. Finding the first empty seat index (0, 1, 2, 3...)
         const string script = @"
             local metaJson = redis.call('GET', KEYS[1])
             if not metaJson then return 0 end
@@ -102,7 +97,6 @@ public class RedisLudoRepository(IConnectionMultiplexer redis) : ILudoRepository
             return 1
         ";
 
-        // FIX: Use explicit Keys and Values instead of LuaScript.Prepare with object mapping
         var keys = new RedisKey[] { metaKey };
         var values = new RedisValue[] { userId };
 

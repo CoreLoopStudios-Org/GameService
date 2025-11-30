@@ -22,6 +22,18 @@ public class GameAdminService(HttpClient http)
         var response = await http.PostAsJsonAsync($"/admin/players/{userId}/coins", new UpdateCoinRequest(amount));
         response.EnsureSuccessStatusCode();
     }
+    
+    public async Task PlayLudoRollAsync(string roomId)
+    {
+        var response = await http.PostAsync($"/admin/ludo/{roomId}/roll", null);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task PlayLudoMoveAsync(string roomId, int tokenIndex)
+    {
+        var response = await http.PostAsync($"/admin/ludo/{roomId}/move/{tokenIndex}", null);
+        response.EnsureSuccessStatusCode();
+    }
 
     public async Task<System.Text.Json.JsonElement?> GetGameStateAsync(string roomId)
     {
@@ -54,7 +66,6 @@ public class GameAdminService(HttpClient http)
     
     public async Task CreateGameAsync(int playerCount)
     {
-        // This uses the DI injected HttpClient which knows that "apiservice" = localhost:port
         var response = await http.PostAsJsonAsync("/admin/games", new { PlayerCount = playerCount });
         response.EnsureSuccessStatusCode();
     }

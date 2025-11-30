@@ -1,113 +1,57 @@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Web
 @using GameService.Ludo
+@inject GameService.Web.Services.GameAdminService AdminService
 
 <div class="row">
+    <!-- Visualization Column (Same as before) -->
     <div class="col-md-8">
-        <div class="card mb-4">
-            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                <h4 class="mb-0">Ludo Game State</h4>
-                <button class="btn btn-sm btn-light" @onclick="OnRefresh">Refresh</button>
-            </div>
+        <!-- ... Visualization Code ... -->
+         <div class="card mb-4">
+            <div class="card-header bg-dark text-white">State</div>
             <div class="card-body">
-                <div class="row mb-3">
-                    <div class="col-md-4">
-                        <strong>Current Player Seat:</strong> <span class="badge bg-primary fs-5">@Game.State.CurrentPlayer</span>
-                    </div>
-                    <div class="col-md-4">
-                        <strong>Last Roll:</strong> <span class="badge bg-secondary fs-5">@Game.State.LastDiceRoll</span>
-                    </div>
-                    <div class="col-md-4">
-                        <strong>Winner:</strong> 
-                        @if(Game.State.Winner != 255)
-                        {
-                            <span class="badge bg-success">Seat @Game.State.Winner</span>
-                        }
-                        else
-                        {
-                            <span class="text-muted">None</span>
-                        }
-                    </div>
-                </div>
-
-                <hr />
-                
-                <h5>Tokens</h5>
-                <div class="table-responsive">
-                    <table class="table table-bordered text-center">
-                        <thead>
-                            <tr>
-                                <th>Player (Seat)</th>
-                                <th>Token 0</th>
-                                <th>Token 1</th>
-                                <th>Token 2</th>
-                                <th>Token 3</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @for (int i = 0; i < 4; i++)
-                            {
-                                var isActive = (Game.State.ActiveSeats & (1 << i)) != 0;
-                                <tr class="@(isActive ? (Game.State.CurrentPlayer == i ? "table-primary" : "") : "table-secondary text-muted")">
-                                    <td>
-                                        Seat @i
-                                        @if(!isActive) { <small>(Inactive)</small> }
-                                    </td>
-                                    @for (int t = 0; t < 4; t++)
-                                    {
-                                        <td>@Game.State.GetTokenPos(i, t)</td>
-                                    }
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
+                <p>Current Turn: Seat @Game.State.CurrentPlayer</p>
+                <p>Last Dice: @Game.State.LastDiceRoll</p>
             </div>
         </div>
     </div>
 
+    <!-- Controls Column -->
     <div class="col-md-4">
         <div class="card mb-4">
             <div class="card-header bg-danger text-white">
                 <h5 class="mb-0">God Mode Controls</h5>
             </div>
             <div class="card-body">
-                <p class="text-muted">Force actions on behalf of the current player.</p>
+                <p class="text-muted small">
+                    Actions here are performed by the SERVER on behalf of whoever's turn it is. 
+                    All players will see the move happen.
+                </p>
                 
-                <h6>Force Dice Roll</h6>
+                <hr />
+
+                <h6>1. Roll Dice</h6>
+                <button class="btn btn-warning w-100 mb-3" @onclick="DoForceRoll" disabled="@(isBusy || Game.State.LastDiceRoll != 0)">
+                    @if(isBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                    Force Roll
+                </button>
+                
+                <h6>2. Move Token</h6>
                 <div class="d-grid gap-2 d-md-block">
-                    @for (int i = 1; i <= 6; i++)
+                    @for (int i = 0; i < 4; i++)
                     {
-                        var val = i;
-                        <button class="btn btn-outline-danger me-1 mb-1" @onclick="() => OnForceRoll.InvokeAsync(val)">
-                            @val
+                        var tIdx = i;
+                        <button class="btn btn-outline-danger me-1 mb-1" 
+                                @onclick="() => DoForceMove(tIdx)"
+                                disabled="@(isBusy || Game.State.LastDiceRoll == 0)">
+                            Token @tIdx
                         </button>
                     }
                 </div>
-                
+
                 <hr />
-                
-                <div class="d-grid">
-                    <button class="btn btn-danger" @onclick="OnTerminate">
-                        Terminate Game
-                    </button>
-                </div>
+                <button class="btn btn-secondary w-100" @onclick="OnRefresh">Refresh State</button>
             </div>
-        </div>
-        
-        <div class="card">
-            <div class="card-header">
-                Players
-            </div>
-            <ul class="list-group list-group-flush">
-                @foreach (var p in Game.Meta.PlayerSeats)
-                {
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <span class="text-truncate" title="@p.Key">@p.Key</span>
-                        <span class="badge bg-secondary">Seat @p.Value</span>
-                    </li>
-                }
-            </ul>
         </div>
     </div>
 </div>
@@ -115,6 +59,36 @@
 @code {
     [Parameter] public required LudoContext Game { get; set; }
     [Parameter] public EventCallback OnRefresh { get; set; }
-    [Parameter] public EventCallback<int> OnForceRoll { get; set; }
-    [Parameter] public EventCallback OnTerminate { get; set; }
+    
+    private bool isBusy = false;
+
+    private async Task DoForceRoll()
+    {
+        isBusy = true;
+        try 
+        {
+            await AdminService.PlayLudoRollAsync(Game.RoomId);
+            await OnRefresh.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+        finally { isBusy = false; }
+    }
+
+    private async Task DoForceMove(int tokenIndex)
+    {
+        isBusy = true;
+        try 
+        {
+            await AdminService.PlayLudoMoveAsync(Game.RoomId, tokenIndex);
+            await OnRefresh.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+             Console.WriteLine($"Error: {ex.Message}");
+        }
+        finally { isBusy = false; }
+    }
 }

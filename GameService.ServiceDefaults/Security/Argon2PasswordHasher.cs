@@ -8,7 +8,6 @@ namespace GameService.ServiceDefaults.Security;
 
 public class Argon2PasswordHasher : IPasswordHasher<ApplicationUser>
 {
-    // Default config for new passwords
     private const int DefaultDegreeOfParallelism = 1;
     private const int DefaultMemorySize = 65536;
     private const int DefaultIterations = 3;
@@ -28,7 +27,6 @@ public class Argon2PasswordHasher : IPasswordHasher<ApplicationUser>
             var parts = hashedPassword.Split('$');
             if (parts.Length != 6) return PasswordVerificationResult.Failed;
 
-            // Parse params: m=65536,t=3,p=1
             var paramsPart = parts[3];
             var paramMap = ParseParameters(paramsPart);
 

@@ -20,7 +20,6 @@ builder.AddServiceDefaults();
 builder.AddNpgsqlDbContext<GameDbContext>("postgresdb");
 builder.AddRedisClient("cache");
 
-// FIX: Ensure JSON deserialization handles lowercase properties from Unity/JS clients
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, GameJsonContext.Default);
@@ -61,7 +60,6 @@ builder.Services.AddIdentityApiEndpoints<ApplicationUser>()
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<GameDbContext>();
 
-// FIX: Explicitly disable Account Confirmation requirement for the API
 builder.Services.Configure<IdentityOptions>(options => 
 {
     options.SignIn.RequireConfirmedAccount = false; 

@@ -83,11 +83,10 @@ else
 
     private async Task CreateGame()
     {
-        // FIX: Use the injected service instead of creating a raw HttpClient
         try 
         {
             await AdminService.CreateGameAsync(4);
-            await LoadGames(); // Refresh list after creation
+            await LoadGames();
         }
         catch (Exception ex)
         {
