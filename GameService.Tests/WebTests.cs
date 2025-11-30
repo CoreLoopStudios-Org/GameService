@@ -4,7 +4,6 @@ namespace GameService.Tests;
 
 public class WebTests
 {
-    // Increased timeout for CI stability
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
 
     [Test]
