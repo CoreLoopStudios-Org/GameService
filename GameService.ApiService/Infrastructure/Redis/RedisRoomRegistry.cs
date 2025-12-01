@@ -3,17 +3,16 @@ using StackExchange.Redis;
 
 namespace GameService.ApiService.Infrastructure.Redis;
 
-/// <summary>
-/// Redis-based room registry for O(1) RoomId → GameType lookups
-/// </summary>
 public sealed class RedisRoomRegistry(IConnectionMultiplexer redis, ILogger<RedisRoomRegistry> logger) : IRoomRegistry
 {
     private readonly IDatabase _db = redis.GetDatabase();
 
+    // Mapping: RoomId -> GameType
     private const string GlobalRegistryKey = "global:room_registry";
-
-    private static string GameTypeRoomsKey(string gameType) => $"rooms:by_type:{gameType}";
-
+    
+    // Index: GameType -> RoomId (Sorted by creation time/score)
+    private static string GameTypeIndexKey(string gameType) => $"index:rooms:{gameType}";
+    
     private static string LockKey(string roomId) => $"lock:room:{roomId}";
 
     public async Task<string?> GetGameTypeAsync(string roomId)
@@ -25,54 +24,55 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis, ILogger<Redi
     public async Task RegisterRoomAsync(string roomId, string gameType)
     {
         var batch = _db.CreateBatch();
+        var score = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
+        // 1. Map ID to Type
         _ = batch.HashSetAsync(GlobalRegistryKey, roomId, gameType);
-
-        _ = batch.SetAddAsync(GameTypeRoomsKey(gameType), roomId);
+        
+        // 2. Add to Sorted Set Index (O(log(N)))
+        _ = batch.SortedSetAddAsync(GameTypeIndexKey(gameType), roomId, score);
         
         batch.Execute();
-        await Task.CompletedTask;
-
-        logger.LogDebug("Registered room {RoomId} for game type {GameType}", roomId, gameType);
+        await Task.CompletedTask; // Fire and forget the batch
     }
 
     public async Task UnregisterRoomAsync(string roomId)
     {
         var gameType = await GetGameTypeAsync(roomId);
-        if (gameType == null)
-        {
-            return;
-        }
+        if (gameType == null) return;
 
         var batch = _db.CreateBatch();
-
         _ = batch.HashDeleteAsync(GlobalRegistryKey, roomId);
-
-        _ = batch.SetRemoveAsync(GameTypeRoomsKey(gameType), roomId);
-        
+        _ = batch.SortedSetRemoveAsync(GameTypeIndexKey(gameType), roomId);
         batch.Execute();
-        
-        logger.LogDebug("Unregistered room {RoomId}", roomId);
     }
 
     public async Task<IReadOnlyList<string>> GetAllRoomIdsAsync()
     {
-        var entries = await _db.HashGetAllAsync(GlobalRegistryKey);
-        return entries.Select(e => e.Name.ToString()).ToList();
+        // Warning: This is still heavy, but better than SCAN. Use carefully.
+        var entries = await _db.HashKeysAsync(GlobalRegistryKey);
+        return entries.Select(e => e.ToString()).ToList();
     }
 
     public async Task<IReadOnlyList<string>> GetRoomIdsByGameTypeAsync(string gameType)
     {
-        var members = await _db.SetMembersAsync(GameTypeRoomsKey(gameType));
+        // Limit to last 1000 to prevent blowing up memory
+        var members = await _db.SortedSetRangeByRankAsync(GameTypeIndexKey(gameType), 0, 999, Order.Descending);
         return members.Select(m => m.ToString()).ToList();
     }
 
     public async Task<(IReadOnlyList<string> RoomIds, long NextCursor)> GetRoomIdsPagedAsync(string gameType, long cursor = 0, int pageSize = 50)
     {
-        var result = await _db.SetScanAsync(GameTypeRoomsKey(gameType), cursor: cursor, pageSize: pageSize).ToArrayAsync();
+        // Efficient O(log(N) + M) pagination using Sorted Sets
+        // Cursor here acts as the "Skip" count (Rank)
+        var start = cursor;
+        var stop = cursor + pageSize - 1;
 
-        var roomIds = result.Select(m => m.ToString()).ToList();
-
+        var members = await _db.SortedSetRangeByRankAsync(GameTypeIndexKey(gameType), start, stop, Order.Descending);
+        
+        var roomIds = members.Select(m => m.ToString()).ToList();
+        
+        // If we got a full page, the next cursor is start + count. Otherwise 0 (end).
         var nextCursor = roomIds.Count == pageSize ? cursor + pageSize : 0;
         
         return (roomIds, nextCursor);
@@ -80,11 +80,7 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis, ILogger<Redi
 
     public async Task<bool> TryAcquireLockAsync(string roomId, TimeSpan timeout)
     {
-        return await _db.StringSetAsync(
-            LockKey(roomId),
-            Environment.MachineName,
-            timeout,
-            When.NotExists);
+        return await _db.StringSetAsync(LockKey(roomId), Environment.MachineName, timeout, When.NotExists);
     }
 
     public async Task ReleaseLockAsync(string roomId)

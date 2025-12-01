@@ -5,10 +5,6 @@ using StackExchange.Redis;
 
 namespace GameService.ApiService.Infrastructure.Redis;
 
-/// <summary>
-/// Generic Redis repository for game state persistence.
-/// Works with any game type that has a struct-based state.
-/// </summary>
 public sealed class RedisGameRepository<TState>(
     IConnectionMultiplexer redis,
     IRoomRegistry roomRegistry,
@@ -17,6 +13,10 @@ public sealed class RedisGameRepository<TState>(
     where TState : struct
 {
     private readonly IDatabase _db = redis.GetDatabase();
+    
+    // Magic header to detect version/struct layout changes
+    private static readonly int StateSize = Unsafe.SizeOf<TState>();
+    private const byte VersionHeader = 1; 
 
     private string StateKey(string roomId) => $"{{game:{gameType}}}:{roomId}:state";
     private string MetaKey(string roomId) => $"{{game:{gameType}}}:{roomId}:meta";
@@ -31,17 +31,23 @@ public sealed class RedisGameRepository<TState>(
         
         await Task.WhenAll(stateTask, metaTask);
         
-        if (stateTask.Result.IsNullOrEmpty)
+        if (stateTask.Result.IsNullOrEmpty) return null;
+
+        try 
         {
+            var state = DeserializeState((byte[])stateTask.Result!);
+            
+            var meta = metaTask.Result.IsNullOrEmpty 
+                ? new GameRoomMeta { GameType = gameType }
+                : JsonSerializer.Deserialize<GameRoomMeta>(metaTask.Result.ToString()) ?? new GameRoomMeta { GameType = gameType };
+            
+            return new GameContext<TState>(roomId, state, meta);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogError(ex, "State corruption detected for room {RoomId}. Resetting state.", roomId);
             return null;
         }
-
-        var state = DeserializeState((byte[])stateTask.Result!);
-        var meta = metaTask.Result.IsNullOrEmpty 
-            ? new GameRoomMeta { GameType = gameType }
-            : JsonSerializer.Deserialize<GameRoomMeta>(metaTask.Result.ToString()) ?? new GameRoomMeta { GameType = gameType };
-        
-        return new GameContext<TState>(roomId, state, meta);
     }
 
     public async Task SaveAsync(string roomId, TState state, GameRoomMeta meta)
@@ -55,25 +61,17 @@ public sealed class RedisGameRepository<TState>(
         batch.Execute();
 
         await roomRegistry.RegisterRoomAsync(roomId, gameType);
-        
-        logger.LogDebug("Saved game state for room {RoomId}", roomId);
     }
 
     public async Task DeleteAsync(string roomId)
     {
         await _db.KeyDeleteAsync([StateKey(roomId), MetaKey(roomId), LockKey(roomId)]);
         await roomRegistry.UnregisterRoomAsync(roomId);
-        
-        logger.LogDebug("Deleted game state for room {RoomId}", roomId);
     }
 
     public async Task<bool> TryAcquireLockAsync(string roomId, TimeSpan timeout)
     {
-        return await _db.StringSetAsync(
-            LockKey(roomId),
-            Environment.MachineName,
-            timeout,
-            When.NotExists);
+        return await _db.StringSetAsync(LockKey(roomId), Environment.MachineName, timeout, When.NotExists);
     }
 
     public async Task ReleaseLockAsync(string roomId)
@@ -81,29 +79,31 @@ public sealed class RedisGameRepository<TState>(
         await _db.KeyDeleteAsync(LockKey(roomId));
     }
 
-    /// <summary>
-    /// Serialize struct to bytes using unsafe memory copy.
-    /// This is much faster than JSON for game state updates.
-    /// </summary>
     private static byte[] SerializeState(TState state)
     {
-        var bytes = new byte[Unsafe.SizeOf<TState>()];
-        Unsafe.WriteUnaligned(ref bytes[0], state);
+        // Format: [Version:1][Size:4][Data:N]
+        var bytes = new byte[1 + 4 + StateSize];
+        bytes[0] = VersionHeader;
+        Unsafe.WriteUnaligned(ref bytes[1], StateSize);
+        Unsafe.WriteUnaligned(ref bytes[5], state);
         return bytes;
     }
 
-    /// <summary>
-    /// Deserialize bytes to struct using unsafe memory copy.
-    /// </summary>
     private static TState DeserializeState(byte[] bytes)
     {
-        return Unsafe.ReadUnaligned<TState>(ref bytes[0]);
+        if (bytes.Length < 5) throw new InvalidOperationException("Invalid state data: too short");
+        
+        if (bytes[0] != VersionHeader) 
+            throw new InvalidOperationException($"Version mismatch. Expected {VersionHeader}, got {bytes[0]}");
+            
+        int storedSize = Unsafe.ReadUnaligned<int>(ref bytes[1]);
+        if (storedSize != StateSize)
+            throw new InvalidOperationException($"Struct size mismatch. Expected {StateSize}, got {storedSize}. Deployment changed data layout.");
+
+        return Unsafe.ReadUnaligned<TState>(ref bytes[5]);
     }
 }
 
-/// <summary>
-/// Factory for creating typed game repositories
-/// </summary>
 public sealed class RedisGameRepositoryFactory(
     IConnectionMultiplexer redis,
     IRoomRegistry roomRegistry,

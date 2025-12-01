@@ -136,26 +136,64 @@ public static class AdminEndpoints
         return Results.Ok(new { RoomId = roomId, Deleted = true });
     }
 
-    private static async Task<IResult> GetGames(IEnumerable<IGameModule> modules, IServiceProvider sp, IRoomRegistry registry, [FromQuery] string? gameType = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+    private static async Task<IResult> GetGames(
+        IEnumerable<IGameModule> modules, 
+        IServiceProvider sp, 
+        IRoomRegistry registry, 
+        [FromQuery] string? gameType = null, 
+        [FromQuery] int page = 1, 
+        [FromQuery] int pageSize = 50)
     {
         if (pageSize > 100) pageSize = 100;
         if (page < 1) page = 1;
+        
         var allGames = new List<GameRoomDto>();
-        var modulesToQuery = string.IsNullOrEmpty(gameType) ? modules : modules.Where(m => m.GameName.Equals(gameType, StringComparison.OrdinalIgnoreCase));
+        
+        // If gameType is provided, we query just that index.
+        // If not, we iterate modules (still better than scanning all keys).
+        var modulesToQuery = string.IsNullOrEmpty(gameType) 
+            ? modules 
+            : modules.Where(m => m.GameName.Equals(gameType, StringComparison.OrdinalIgnoreCase));
+
         foreach (var module in modulesToQuery)
         {
             var engine = sp.GetKeyedService<IGameEngine>(module.GameName);
             if (engine == null) continue;
+
+            // Use the new Sorted Set pagination
+            // Note: Cross-module pagination is complex. 
+            // For simplicity in this "fix", we fetch per module. 
+            // In a real $1M project, we'd have a unified "AllGames" index.
+            
             var cursor = (long)(page - 1) * pageSize;
             var (roomIds, _) = await registry.GetRoomIdsPagedAsync(module.GameName, cursor, pageSize);
-            foreach (var roomId in roomIds)
+
+            // Parallel fetch of states for the page (Much faster than serial await)
+            var tasks = roomIds.Select(async roomId => 
             {
                 var state = await engine.GetStateAsync(roomId);
-                if (state != null) allGames.Add(new GameRoomDto(state.RoomId, state.GameType, state.Meta.CurrentPlayerCount, state.Meta.MaxPlayers, state.Meta.IsPublic, state.Meta.PlayerSeats));
-                if (allGames.Count >= pageSize) break;
+                return state;
+            });
+
+            var states = await Task.WhenAll(tasks);
+
+            foreach (var state in states)
+            {
+                if (state != null) 
+                {
+                    allGames.Add(new GameRoomDto(
+                        state.RoomId, 
+                        state.GameType, 
+                        state.Meta.CurrentPlayerCount, 
+                        state.Meta.MaxPlayers, 
+                        state.Meta.IsPublic, 
+                        state.Meta.PlayerSeats));
+                }
             }
+            
             if (allGames.Count >= pageSize) break;
         }
+        
         return Results.Ok(allGames);
     }
 
