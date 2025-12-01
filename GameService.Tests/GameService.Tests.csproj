@@ -20,6 +20,10 @@
   <ItemGroup>
     <ProjectReference Include="..\GameService.ApiService\GameService.ApiService.csproj" />
     <ProjectReference Include="..\GameService.AppHost\GameService.AppHost.csproj" />
+    <ProjectReference Include="..\GameService.GameCore\GameService.GameCore.csproj" />
+    <ProjectReference Include="..\GameService.Ludo\GameService.Ludo.csproj" />
+    <ProjectReference Include="..\GameService.LuckyMine\GameService.LuckyMine.csproj" />
+    <ProjectReference Include="..\GameService.ServiceDefaults\GameService.ServiceDefaults.csproj" />
   </ItemGroup>
 
   <ItemGroup>
