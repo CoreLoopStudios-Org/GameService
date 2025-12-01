@@ -30,6 +30,25 @@ public interface IGameEngine
 }
 
 /// <summary>
+/// Extended interface for turn-based games with timeout handling.
+/// Games implementing this will have automatic AFK/timeout handling.
+/// </summary>
+public interface ITurnBasedGameEngine : IGameEngine
+{
+    /// <summary>
+    /// Turn timeout in seconds. After this time, ForceEndTurn or AutoPlay is triggered.
+    /// </summary>
+    int TurnTimeoutSeconds { get; }
+    
+    /// <summary>
+    /// Checks a room for player timeouts and forces moves/forfeits if necessary.
+    /// Called by a background worker every few seconds.
+    /// </summary>
+    /// <returns>Result if an action was taken, null if no timeout occurred</returns>
+    Task<GameActionResult?> CheckTimeoutsAsync(string roomId);
+}
+
+/// <summary>
 /// Command sent from client to execute a game action
 /// </summary>
 public sealed record GameCommand(
@@ -107,4 +126,10 @@ public sealed record GameRoomMeta
     public Dictionary<string, string> Config { get; init; } = new();
 
     public int CurrentPlayerCount => PlayerSeats.Count;
+    
+    /// <summary>Timestamp when the current turn started (for timeout tracking)</summary>
+    public DateTimeOffset TurnStartedAt { get; init; } = DateTimeOffset.UtcNow;
+    
+    /// <summary>Tracks players who have disconnected but may reconnect</summary>
+    public Dictionary<string, DateTimeOffset> DisconnectedPlayers { get; init; } = new();
 }

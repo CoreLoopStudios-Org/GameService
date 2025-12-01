@@ -199,7 +199,15 @@ public static class AdminEndpoints
 
     private static async Task<IResult> GetPlayers(GameDbContext db, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
-        var players = await db.PlayerProfiles.AsNoTracking().Include(p => p.User).OrderBy(p => p.Id).Skip((page - 1) * pageSize).Take(pageSize).Select(p => new AdminPlayerDto(p.Id, p.UserId, p.User.UserName ?? "Unknown", p.User.Email ?? "No Email", p.Coins)).ToListAsync();
+        var players = await db.PlayerProfiles
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted)
+            .Include(p => p.User)
+            .OrderBy(p => p.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(p => new AdminPlayerDto(p.Id, p.UserId, p.User.UserName ?? "Unknown", p.User.Email ?? "No Email", p.Coins))
+            .ToListAsync();
         return Results.Ok(players);
     }
 
@@ -212,12 +220,26 @@ public static class AdminEndpoints
         return Results.Ok(new { NewBalance = profile.Coins });
     }
 
-    private static async Task<IResult> DeletePlayer(string userId, UserManager<ApplicationUser> userManager, IGameEventPublisher publisher)
+    private static async Task<IResult> DeletePlayer(string userId, UserManager<ApplicationUser> userManager, GameDbContext db, IGameEventPublisher publisher)
     {
         var user = await userManager.FindByIdAsync(userId);
         if (user == null) return Results.NotFound();
+        
+        // Soft delete: Mark as deleted instead of hard delete
+        var rows = await db.PlayerProfiles
+            .Where(p => p.UserId == userId && !p.IsDeleted)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(p => p.IsDeleted, true)
+                .SetProperty(p => p.DeletedAt, DateTimeOffset.UtcNow));
+        
+        if (rows == 0)
+        {
+            // Profile already deleted or doesn't exist, proceed with user deletion
+        }
+        
         var result = await userManager.DeleteAsync(user);
         if (!result.Succeeded) return Results.BadRequest(result.Errors);
+        
         await publisher.PublishPlayerUpdatedAsync(new PlayerUpdatedMessage(userId, 0, user.UserName, user.Email, PlayerChangeType.Deleted));
         return Results.Ok();
     }

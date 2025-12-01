@@ -14,6 +14,8 @@ builder.AddRedisOutputCache("cache");
 builder.AddRedisClient("cache");
 
 builder.Services.AddSingleton<PlayerUpdateNotifier>();
+builder.Services.AddScoped<ToastService>();
+builder.Services.AddScoped<SoundService>();
 builder.Services.AddHttpClient<GameAdminService>((sp, client) => 
 {
     client.BaseAddress = new("http://apiservice");

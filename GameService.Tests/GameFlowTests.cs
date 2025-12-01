@@ -68,7 +68,7 @@ public class GameFlowTests
         await connection.StartAsync(cancellationToken).WaitAsync(Timeout, cancellationToken);
 
         var createResponse = await connection.InvokeAsync<CreateRoomResponse>(
-            "CreateRoom", "Ludo", 4, 0L, (string?)null, cancellationToken);
+            "CreateRoom", "Classic Ludo (4P)", cancellationToken);
 
         Assert.That(createResponse.Success, Is.True);
         Assert.That(createResponse.RoomId, Is.Not.Null.And.Not.Empty);

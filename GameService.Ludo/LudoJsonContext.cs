@@ -14,6 +14,7 @@ namespace GameService.Ludo;
 [JsonSerializable(typeof(GameRoomDto))]
 [JsonSerializable(typeof(List<GameRoomDto>))]
 [JsonSerializable(typeof(Dictionary<string, int>))]
+[JsonSerializable(typeof(Dictionary<string, DateTimeOffset>))]
 public partial class LudoJsonContext : JsonSerializerContext
 {
 }

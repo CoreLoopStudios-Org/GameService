@@ -5,6 +5,7 @@ using GameService.ApiService.Features.Players;
 using GameService.ApiService.Hubs;
 using GameService.ApiService.Infrastructure.Data;
 using GameService.ApiService.Infrastructure.Redis;
+using GameService.ApiService.Infrastructure.Workers;
 using GameService.ServiceDefaults.Security;
 using GameService.ServiceDefaults.Data;
 using Microsoft.AspNetCore.Identity;
@@ -94,6 +95,9 @@ builder.Services.AddScoped<IEconomyService, EconomyService>();
 
 builder.Services.AddGameModule<LudoModule>();
 builder.Services.AddGameModule<LuckyMineModule>();
+
+// Background worker for turn timeout handling
+builder.Services.AddHostedService<GameLoopWorker>();
 
 builder.Services.AddSignalR()
     .AddStackExchangeRedis(builder.Configuration.GetConnectionString("cache") ?? throw new InvalidOperationException("Redis connection string is missing"))

@@ -7,8 +7,9 @@ namespace GameService.Ludo;
 /// <summary>
 /// Ludo game engine implementing the unified IGameEngine interface.
 /// Handles all game actions through the command pattern.
+/// Implements ITurnBasedGameEngine for automatic timeout handling.
 /// </summary>
-public sealed class LudoGameEngine : IGameEngine
+public sealed class LudoGameEngine : ITurnBasedGameEngine
 {
     private readonly IGameRepository<LudoState> _repository;
     private readonly IRoomRegistry _roomRegistry;
@@ -16,6 +17,9 @@ public sealed class LudoGameEngine : IGameEngine
     private readonly ILogger<LudoGameEngine> _logger;
 
     public string GameType => "Ludo";
+    
+    /// <summary>Turn timeout: 30 seconds per turn</summary>
+    public int TurnTimeoutSeconds => 30;
 
     public LudoGameEngine(
         IGameRepositoryFactory repositoryFactory,
@@ -35,6 +39,77 @@ public sealed class LudoGameEngine : IGameEngine
             "roll" => await HandleRollAsync(roomId, command.UserId),
             "move" => await HandleMoveAsync(roomId, command.UserId, command.GetInt("tokenIndex")),
             _ => GameActionResult.Error($"Unknown action: {command.Action}")
+        };
+    }
+    
+    /// <summary>
+    /// Check for turn timeout and auto-play if player is AFK.
+    /// </summary>
+    public async Task<GameActionResult?> CheckTimeoutsAsync(string roomId)
+    {
+        var ctx = await _repository.LoadAsync(roomId);
+        if (ctx == null) return null;
+        
+        // Game already ended
+        if (ctx.State.Winner != 255) return null;
+        
+        // Check if turn has timed out
+        var elapsed = DateTimeOffset.UtcNow - ctx.Meta.TurnStartedAt;
+        if (elapsed.TotalSeconds < TurnTimeoutSeconds) return null;
+        
+        _logger.LogInformation("Turn timeout in room {RoomId} for player {Player}", roomId, ctx.State.CurrentPlayer);
+        
+        // Auto-play: Roll if needed, then make best available move or pass
+        var engine = new LudoEngine(ctx.State, _diceRoller);
+        var events = new List<GameEvent>();
+        
+        events.Add(new GameEvent("TurnTimeout", new { Player = ctx.State.CurrentPlayer }));
+        
+        if (ctx.State.LastDiceRoll == 0)
+        {
+            // Auto-roll
+            if (engine.TryRollDice(out var rollResult))
+            {
+                events.Add(new GameEvent("DiceRolled", new { Value = rollResult.DiceValue, Player = ctx.State.CurrentPlayer, AutoPlay = true }));
+            }
+        }
+        
+        // Try to make a move
+        var legalMoves = engine.GetLegalMoves();
+        if (legalMoves.Count > 0)
+        {
+            // Pick first legal move (simple AI)
+            var tokenIndex = legalMoves[0];
+            if (engine.TryMoveToken(tokenIndex, out var moveResult))
+            {
+                events.Add(new GameEvent("TokenMoved", new { Player = ctx.State.CurrentPlayer, TokenIndex = tokenIndex, NewPosition = moveResult.NewPos, AutoPlay = true }));
+                
+                if ((moveResult.Status & LudoStatus.CapturedOpponent) != 0)
+                {
+                    events.Add(new GameEvent("TokenCaptured", new { CapturedPlayer = moveResult.CapturedPid, CapturedToken = moveResult.CapturedTid }));
+                }
+                
+                if ((moveResult.Status & LudoStatus.GameWon) != 0)
+                {
+                    events.Add(new GameEvent("GameWon", new { Winner = ctx.State.CurrentPlayer }));
+                }
+            }
+        }
+        
+        // Update turn timestamp
+        var newMeta = ctx.Meta with { TurnStartedAt = DateTimeOffset.UtcNow };
+        await _repository.SaveAsync(roomId, engine.State, newMeta);
+        
+        events.Add(new GameEvent("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
+        
+        var state = await GetStateAsync(roomId);
+        
+        return new GameActionResult
+        {
+            Success = true,
+            ShouldBroadcast = true,
+            NewState = state,
+            Events = events
         };
     }
 
@@ -95,7 +170,9 @@ public sealed class LudoGameEngine : IGameEngine
                 Winner = ctx.State.Winner == 255 ? -1 : ctx.State.Winner,
                 ActiveSeatsBinary = Convert.ToString(ctx.State.ActiveSeats, 2).PadLeft(4, '0'),
                 Tokens = tokenArray,
-                ConsecutiveSixes = ctx.State.ConsecutiveSixes
+                ConsecutiveSixes = ctx.State.ConsecutiveSixes,
+                TurnStartedAt = ctx.Meta.TurnStartedAt,
+                TurnTimeoutSeconds = TurnTimeoutSeconds
             },
             LegalMoves = legalMoves.Select(i => $"move:{i}").ToList()
         };
@@ -109,7 +186,7 @@ public sealed class LudoGameEngine : IGameEngine
 
         int seatIndex;
 
-        if (userId == "ADMIN")
+        if (userId == "ADMIN" || userId == "SYSTEM")
         {
             seatIndex = ctx.State.CurrentPlayer;
         }
@@ -127,7 +204,9 @@ public sealed class LudoGameEngine : IGameEngine
         if (!engine.TryRollDice(out var result))
             return GameActionResult.Error($"Cannot roll: {result.Status}");
 
-        await _repository.SaveAsync(roomId, engine.State, ctx.Meta);
+        // Reset turn timer on action
+        var newMeta = ctx.Meta with { TurnStartedAt = DateTimeOffset.UtcNow };
+        await _repository.SaveAsync(roomId, engine.State, newMeta);
 
         var events = new List<GameEvent>
         {
@@ -160,7 +239,7 @@ public sealed class LudoGameEngine : IGameEngine
 
         int seatIndex;
 
-        if (userId == "ADMIN")
+        if (userId == "ADMIN" || userId == "SYSTEM")
         {
             seatIndex = ctx.State.CurrentPlayer;
         }
@@ -178,7 +257,9 @@ public sealed class LudoGameEngine : IGameEngine
         if (!engine.TryMoveToken(tokenIndex, out var result))
             return GameActionResult.Error($"Cannot move token: {result.Status}");
 
-        await _repository.SaveAsync(roomId, engine.State, ctx.Meta);
+        // Reset turn timer on action
+        var newMeta = ctx.Meta with { TurnStartedAt = DateTimeOffset.UtcNow };
+        await _repository.SaveAsync(roomId, engine.State, newMeta);
 
         var events = new List<GameEvent>
         {
@@ -236,4 +317,6 @@ public sealed record LudoStateDto
     public string ActiveSeatsBinary { get; init; } = "";
     public byte[] Tokens { get; init; } = [];
     public int ConsecutiveSixes { get; init; }
+    public DateTimeOffset TurnStartedAt { get; init; }
+    public int TurnTimeoutSeconds { get; init; }
 }

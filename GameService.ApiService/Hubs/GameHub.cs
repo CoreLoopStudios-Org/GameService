@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Claims;
 using System.Text.Json;
 using GameService.GameCore;
@@ -11,6 +12,7 @@ namespace GameService.ApiService.Hubs;
 /// <summary>
 /// Unified game hub - handles ALL game types through a single SignalR endpoint.
 /// Clients connect once and can interact with any game type.
+/// Includes chat functionality and reconnection grace period handling.
 /// </summary>
 [Authorize]
 public class GameHub(
@@ -18,20 +20,113 @@ public class GameHub(
     IServiceProvider serviceProvider,
     ILogger<GameHub> logger) : Hub
 {
+    /// <summary>
+    /// Tracks recently disconnected players for reconnection grace period (15 seconds)
+    /// Key: UserId, Value: (RoomId, DisconnectTime)
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, (string RoomId, DateTimeOffset DisconnectTime)> DisconnectedPlayers = new();
+    
+    private const int ReconnectionGracePeriodSeconds = 15;
+    
     private string UserId => Context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
     private string UserName => Context.User?.Identity?.Name ?? "Unknown";
 
     public override async Task OnConnectedAsync()
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, "Lobby");
+        
+        // Check if this is a reconnection within grace period
+        if (DisconnectedPlayers.TryRemove(UserId, out var disconnectInfo))
+        {
+            var elapsed = DateTimeOffset.UtcNow - disconnectInfo.DisconnectTime;
+            if (elapsed.TotalSeconds < ReconnectionGracePeriodSeconds)
+            {
+                // Reconnect to the room automatically
+                await Groups.AddToGroupAsync(Context.ConnectionId, disconnectInfo.RoomId);
+                await Clients.Group(disconnectInfo.RoomId).SendAsync("PlayerReconnected", new PlayerReconnectedEvent(UserId, UserName));
+                logger.LogInformation("Player {UserId} reconnected to room {RoomId} within grace period", UserId, disconnectInfo.RoomId);
+            }
+        }
+        
         logger.LogInformation("Player {UserId} connected to GameHub", UserId);
         await base.OnConnectedAsync();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        // Find which room(s) this player was in
+        var allRoomIds = await roomRegistry.GetAllRoomIdsAsync();
+        
+        foreach (var roomId in allRoomIds)
+        {
+            var gameType = await roomRegistry.GetGameTypeAsync(roomId);
+            if (gameType == null) continue;
+            
+            var engine = serviceProvider.GetKeyedService<IGameEngine>(gameType);
+            if (engine == null) continue;
+            
+            var state = await engine.GetStateAsync(roomId);
+            if (state?.Meta.PlayerSeats.ContainsKey(UserId) == true)
+            {
+                // Player was in this room - start grace period instead of immediate leave
+                DisconnectedPlayers[UserId] = (roomId, DateTimeOffset.UtcNow);
+                
+                // Notify others that player is temporarily disconnected
+                await Clients.Group(roomId).SendAsync("PlayerDisconnected", new PlayerDisconnectedEvent(UserId, UserName, ReconnectionGracePeriodSeconds));
+                
+                // Schedule cleanup after grace period
+                var capturedUserId = UserId;
+                var capturedUserName = UserName;
+                var capturedRoomId = roomId;
+                var capturedGameType = gameType;
+                _ = Task.Delay(TimeSpan.FromSeconds(ReconnectionGracePeriodSeconds + 1)).ContinueWith(async _ =>
+                {
+                    if (DisconnectedPlayers.TryRemove(capturedUserId, out var info) && info.RoomId == capturedRoomId)
+                    {
+                        var roomService = serviceProvider.GetKeyedService<IGameRoomService>(capturedGameType);
+                        if (roomService != null)
+                        {
+                            await roomService.LeaveRoomAsync(capturedRoomId, capturedUserId);
+                        }
+                        
+                        var hubContext = serviceProvider.GetRequiredService<IHubContext<GameHub>>();
+                        await hubContext.Clients.Group(capturedRoomId).SendAsync("PlayerLeft", new PlayerLeftEvent(capturedUserId, capturedUserName));
+                        
+                        logger.LogInformation("Player {UserId} grace period expired, removed from room {RoomId}", capturedUserId, capturedRoomId);
+                    }
+                });
+                
+                break;
+            }
+        }
+        
         logger.LogInformation("Player {UserId} disconnected from GameHub", UserId);
         await base.OnDisconnectedAsync(exception);
+    }
+    
+    /// <summary>
+    /// Send a chat message to all players in a room
+    /// </summary>
+    public async Task SendChatMessage(string roomId, string message)
+    {
+        if (string.IsNullOrWhiteSpace(message) || message.Length > 500)
+            return;
+        
+        var gameType = await roomRegistry.GetGameTypeAsync(roomId);
+        if (gameType == null) return;
+        
+        // Verify player is in the room
+        var engine = serviceProvider.GetKeyedService<IGameEngine>(gameType);
+        if (engine == null) return;
+        
+        var state = await engine.GetStateAsync(roomId);
+        if (state?.Meta.PlayerSeats.ContainsKey(UserId) != true)
+            return;
+        
+        var chatEvent = new ChatMessageEvent(UserId, UserName, message, DateTimeOffset.UtcNow);
+        await Clients.Group(roomId).SendAsync("ChatMessage", chatEvent);
+        
+        logger.LogDebug("Chat in {RoomId}: {UserName}: {Message}", roomId, UserName, message);
     }
 
     /// <summary>
@@ -264,3 +359,6 @@ public sealed record JoinRoomResponse(bool Success, int SeatIndex, string? Error
 public sealed record PlayerJoinedEvent(string UserId, string UserName, int SeatIndex);
 public sealed record PlayerLeftEvent(string UserId, string UserName);
 public sealed record ActionErrorEvent(string Action, string ErrorMessage);
+public sealed record PlayerDisconnectedEvent(string UserId, string UserName, int GracePeriodSeconds);
+public sealed record PlayerReconnectedEvent(string UserId, string UserName);
+public sealed record ChatMessageEvent(string UserId, string UserName, string Message, DateTimeOffset Timestamp);

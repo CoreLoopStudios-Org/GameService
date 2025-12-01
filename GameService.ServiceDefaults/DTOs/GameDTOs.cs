@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace GameService.ServiceDefaults.DTOs;
 
-public record struct UpdateCoinRequest(long Amount);
+public record struct UpdateCoinRequest(long Amount, string? IdempotencyKey = null, string? ReferenceId = null);
 
 public record struct PlayerProfileResponse(string UserId, long Coins);
 
@@ -32,3 +32,15 @@ public class CreateTemplateRequest
 }
 
 public record CreateRoomFromTemplateRequest(int TemplateId);
+
+/// <summary>
+/// Wallet transaction history entry for user-facing API
+/// </summary>
+public record WalletTransactionDto(
+    long Id,
+    long Amount,
+    long BalanceAfter,
+    string TransactionType,
+    string Description,
+    string ReferenceId,
+    DateTimeOffset CreatedAt);
