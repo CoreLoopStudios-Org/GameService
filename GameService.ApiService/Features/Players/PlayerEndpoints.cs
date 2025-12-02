@@ -1,6 +1,4 @@
 using System.Security.Claims;
-using GameService.ServiceDefaults.DTOs;
-using Microsoft.AspNetCore.Mvc;
 
 namespace GameService.ApiService.Features.Players;
 

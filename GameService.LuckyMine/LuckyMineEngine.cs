@@ -1,4 +1,3 @@
-using System.Text.Json;
 using GameService.GameCore;
 using Microsoft.Extensions.Logging;
 
@@ -8,7 +7,7 @@ public sealed class LuckyMineEngine(
     IGameRepositoryFactory repoFactory,
     ILogger<LuckyMineEngine> logger) : IGameEngine
 {
-    private readonly IGameRepository<LuckyMineState> _repository 
+    private readonly IGameRepository<LuckyMineState> _repository
         = repoFactory.Create<LuckyMineState>("LuckyMine");
 
     public string GameType => "LuckyMine";
@@ -19,6 +18,33 @@ public sealed class LuckyMineEngine(
         {
             "click" => await HandleClickAsync(roomId, command.UserId, command.GetInt("tileIndex")),
             _ => GameActionResult.Error($"Unknown action: {command.Action}")
+        };
+    }
+
+    public async Task<IReadOnlyList<string>> GetLegalActionsAsync(string roomId, string userId)
+    {
+        var ctx = await _repository.LoadAsync(roomId);
+        if (ctx == null) return [];
+
+        if (ctx.Meta.PlayerSeats.TryGetValue(userId, out var seat) &&
+            ctx.State.CurrentPlayerIndex == seat &&
+            !ctx.State.IsDead(seat))
+            return ["click"];
+        return [];
+    }
+
+    public async Task<GameStateResponse?> GetStateAsync(string roomId)
+    {
+        var ctx = await _repository.LoadAsync(roomId);
+        if (ctx == null) return null;
+
+        return new GameStateResponse
+        {
+            RoomId = roomId,
+            GameType = GameType,
+            Meta = ctx.Meta,
+            State = MapToDto(ctx.State),
+            LegalMoves = ctx.State.CurrentPlayerIndex < ctx.Meta.CurrentPlayerCount ? ["click"] : []
         };
     }
 
@@ -43,7 +69,7 @@ public sealed class LuckyMineEngine(
 
         if (state.IsRevealed(tileIndex))
             return GameActionResult.Error("Tile already revealed");
-        
+
         if (state.IsDead(seat))
             return GameActionResult.Error("You are eliminated");
 
@@ -53,7 +79,7 @@ public sealed class LuckyMineEngine(
 
         if (state.JackpotCounter > 0) state.JackpotCounter--;
 
-        bool isMine = state.IsMine(tileIndex);
+        var isMine = state.IsMine(tileIndex);
         long coinChange = 0;
 
         if (isMine)
@@ -65,21 +91,22 @@ public sealed class LuckyMineEngine(
         else
         {
             float risk = state.TotalMines;
-            float gain = (risk * state.RewardSlope) + 1.0f;
+            var gain = risk * state.RewardSlope + 1.0f;
 
             coinChange = (long)(state.EntryCost * gain);
-            
-            events.Add(new GameEvent("TileSafe", new { 
-                Player = seat, 
-                Tile = tileIndex, 
+
+            events.Add(new GameEvent("TileSafe", new
+            {
+                Player = seat,
+                Tile = tileIndex,
                 WinAmount = coinChange,
-                JackpotLeft = state.JackpotCounter 
+                JackpotLeft = state.JackpotCounter
             }));
 
             if (state.JackpotCounter == 0)
             {
                 state.Status = (byte)LuckyMineStatus.JackpotHit;
-                events.Add(new GameEvent("JackpotWon", new { Player = seat, Prize = "iPhone" })); 
+                events.Add(new GameEvent("JackpotWon", new { Player = seat, Prize = "iPhone" }));
             }
         }
 
@@ -101,8 +128,8 @@ public sealed class LuckyMineEngine(
     private void AdvanceTurn(ref LuckyMineState state, int playerCount)
     {
         if (playerCount == 0) return;
-        
-        int attempts = 0;
+
+        var attempts = 0;
         do
         {
             state.CurrentPlayerIndex = (state.CurrentPlayerIndex + 1) % playerCount;
@@ -110,44 +137,18 @@ public sealed class LuckyMineEngine(
         } while (state.IsDead(state.CurrentPlayerIndex) && attempts < playerCount);
     }
 
-    public async Task<IReadOnlyList<string>> GetLegalActionsAsync(string roomId, string userId)
+    private LuckyMineDto MapToDto(LuckyMineState s)
     {
-        var ctx = await _repository.LoadAsync(roomId);
-        if (ctx == null) return [];
-
-        if (ctx.Meta.PlayerSeats.TryGetValue(userId, out var seat) && 
-            ctx.State.CurrentPlayerIndex == seat && 
-            !ctx.State.IsDead(seat))
+        return new LuckyMineDto
         {
-            return ["click"];
-        }
-        return [];
-    }
-
-    public async Task<GameStateResponse?> GetStateAsync(string roomId)
-    {
-        var ctx = await _repository.LoadAsync(roomId);
-        if (ctx == null) return null;
-
-        return new GameStateResponse
-        {
-            RoomId = roomId,
-            GameType = GameType,
-            Meta = ctx.Meta,
-            State = MapToDto(ctx.State),
-            LegalMoves = ctx.State.CurrentPlayerIndex < ctx.Meta.CurrentPlayerCount ? ["click"] : []
+            RevealedMask0 = s.RevealedMask0,
+            RevealedMask1 = s.RevealedMask1,
+            JackpotCounter = s.JackpotCounter,
+            CurrentPlayerIndex = s.CurrentPlayerIndex,
+            TotalTiles = s.TotalTiles,
+            RemainingMines = s.TotalMines,
+            EntryCost = s.EntryCost,
+            Status = ((LuckyMineStatus)s.Status).ToString()
         };
     }
-
-    private LuckyMineDto MapToDto(LuckyMineState s) => new()
-    {
-        RevealedMask0 = s.RevealedMask0,
-        RevealedMask1 = s.RevealedMask1,
-        JackpotCounter = s.JackpotCounter,
-        CurrentPlayerIndex = s.CurrentPlayerIndex,
-        TotalTiles = s.TotalTiles,
-        RemainingMines = s.TotalMines, 
-        EntryCost = s.EntryCost,
-        Status = ((LuckyMineStatus)s.Status).ToString()
-    };
 }

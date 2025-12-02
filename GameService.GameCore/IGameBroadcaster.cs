@@ -1,8 +1,8 @@
 namespace GameService.GameCore;
 
 /// <summary>
-/// Abstract interface for broadcasting game events to clients.
-/// Decouples game modules from specific transport (SignalR).
+///     Abstract interface for broadcasting game events to clients.
+///     Decouples game modules from specific transport (SignalR).
 /// </summary>
 public interface IGameBroadcaster
 {

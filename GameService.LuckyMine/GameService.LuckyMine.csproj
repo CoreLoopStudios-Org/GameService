@@ -8,8 +8,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <FrameworkReference Include="Microsoft.AspNetCore.App" />
-        <ProjectReference Include="..\GameService.GameCore\GameService.GameCore.csproj" />
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
+        <ProjectReference Include="..\GameService.GameCore\GameService.GameCore.csproj"/>
     </ItemGroup>
 
 </Project>

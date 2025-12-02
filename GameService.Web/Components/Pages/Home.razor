@@ -1,11 +1,8 @@
 ﻿@page "/"
-@using Microsoft.AspNetCore.Authorization
-@using GameService.ServiceDefaults.DTOs
-@using System.Security.Claims
-@using GameService.Web.Services
 
 @attribute [Authorize]
 @rendermode InteractiveServer
+@using GameService.ServiceDefaults.DTOs
 @implements IDisposable
 
 @inject GameAdminService AdminService
@@ -50,14 +47,15 @@ else
                 @foreach (var user in users)
                 {
                     var isMe = user.UserId == currentUserId;
-                    var rowClass = isMe ? "table-info" : (updatedUserIds.Contains(user.UserId) ? "table-warning transition-fade" : "");
-                    
+                    var rowClass = isMe ? "table-info" : updatedUserIds.Contains(user.UserId) ? "table-warning transition-fade" : "";
+
                     <tr class="@rowClass" @key="user.UserId">
                         <td class="ps-4 text-muted">#@user.ProfileId</td>
                         <td>
                             <div class="d-flex align-items-center">
-                                <div class="avatar-circle bg-primary text-white me-3 d-flex align-items-center justify-content-center fw-bold" 
-                                     style="width: 32px; height: 32px; border-radius: 50%; font-size: 0.8rem;">
+                                <div
+                                    class="avatar-circle bg-primary text-white me-3 d-flex align-items-center justify-content-center fw-bold"
+                                    style="width: 32px; height: 32px; border-radius: 50%; font-size: 0.8rem;">
                                     @user.Username.Substring(0, 1).ToUpper()
                                 </div>
                                 <div>
@@ -69,20 +67,21 @@ else
                         <td>
                             <div class="d-flex align-items-center">
                                 <span class="fw-bold text-dark me-2">@user.Coins.ToString("N0")</span>
-                                <span class="badge bg-secondary-subtle text-secondary rounded-pill" style="font-size: 0.7em;">COINS</span>
+                                <span class="badge bg-secondary-subtle text-secondary rounded-pill"
+                                      style="font-size: 0.7em;">COINS</span>
                             </div>
                         </td>
                         <td class="text-end pe-4">
                             <div class="btn-group">
-                                <button class="btn btn-sm btn-outline-secondary border-0" 
+                                <button class="btn btn-sm btn-outline-secondary border-0"
                                         title="Adjust Coins"
                                         @onclick="() => EditCoins(user)">
                                     <i class="bi bi-cash-coin fs-5"></i>
                                 </button>
-                                
+
                                 <div class="vr my-2 mx-1 text-secondary opacity-25"></div>
 
-                                <button class="btn btn-sm btn-outline-danger border-0" 
+                                <button class="btn btn-sm btn-outline-danger border-0"
                                         @onclick="() => ConfirmDelete(user)"
                                         disabled="@isMe"
                                         title="@(isMe ? "Cannot delete self" : "Delete Account")">
@@ -114,7 +113,8 @@ else
                         <div class="text-muted">Current: @editingUser.Coins.ToString("N0")</div>
                     </div>
                     <div class="form-floating mb-3">
-                        <input type="number" class="form-control fs-3 fw-bold text-center" id="amountInput" @bind="coinAmount" />
+                        <input type="number" class="form-control fs-3 fw-bold text-center" id="amountInput"
+                               @bind="coinAmount"/>
                         <label for="amountInput" class="text-center w-100">Adjustment Amount (+/-)</label>
                     </div>
                 </div>
@@ -139,7 +139,8 @@ else
                 </div>
                 <div class="modal-body p-4">
                     <p>Are you sure you want to permanently delete user <strong>@deletingUser.Username</strong>?</p>
-                    <p class="mb-0 text-danger small">This action cannot be undone. All game progress and coins will be lost.</p>
+                    <p class="mb-0 text-danger small">This action cannot be undone. All game progress and coins will be
+                        lost.</p>
                 </div>
                 <div class="modal-footer border-top-0">
                     <button type="button" class="btn btn-light" @onclick="CancelDelete">Keep User</button>
@@ -151,15 +152,21 @@ else
 }
 
 <style>
-    .backdrop-blur { background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(2px); }
-    .transition-fade { transition: background-color 1s ease-out; }
+    .backdrop-blur {
+        background-color: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(2px);
+    }
+
+    .transition-fade {
+        transition: background-color 1s ease-out;
+    }
 </style>
 
 @code {
     private List<AdminPlayerDto>? users;
     private string? currentUserId;
     private readonly HashSet<string> updatedUserIds = new();
-    
+
     private AdminPlayerDto? editingUser;
     private AdminPlayerDto? deletingUser;
     private long coinAmount;
@@ -171,7 +178,7 @@ else
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        
+
         await LoadUsers();
         Notifier.OnPlayerUpdated += HandleUpdate;
     }
@@ -193,6 +200,7 @@ else
                     users.RemoveAt(userIndex);
                     StateHasChanged();
                 }
+
                 return;
             }
 
@@ -203,7 +211,7 @@ else
             else if (!string.IsNullOrEmpty(msg.Username))
             {
                 users.Insert(0, new AdminPlayerDto(
-                    msg.ProfileId, 
+                    msg.ProfileId,
                     msg.UserId,
                     msg.Username,
                     msg.Email ?? "Unknown",
@@ -214,10 +222,10 @@ else
             updatedUserIds.Add(msg.UserId);
             StateHasChanged();
 
-            _ = Task.Delay(1000).ContinueWith(_ => 
+            _ = Task.Delay(1000).ContinueWith(_ =>
             {
                 if (_isDisposed) return;
-                InvokeAsync(() => 
+                InvokeAsync(() =>
                 {
                     updatedUserIds.Remove(msg.UserId);
                     StateHasChanged();
@@ -232,12 +240,15 @@ else
         coinAmount = 0;
     }
 
-    private void CloseEdit() => editingUser = null;
+    private void CloseEdit()
+    {
+        editingUser = null;
+    }
 
     private async Task SaveCoins()
     {
         if (editingUser == null || coinAmount == 0) return;
-        try 
+        try
         {
             await AdminService.UpdatePlayerCoinsAsync(editingUser.UserId, coinAmount);
         }
@@ -245,12 +256,19 @@ else
         {
             Logger.LogError(ex, "Error updating coins");
         }
+
         CloseEdit();
     }
 
-    private void ConfirmDelete(AdminPlayerDto user) => deletingUser = user;
-    
-    private void CancelDelete() => deletingUser = null;
+    private void ConfirmDelete(AdminPlayerDto user)
+    {
+        deletingUser = user;
+    }
+
+    private void CancelDelete()
+    {
+        deletingUser = null;
+    }
 
     private async Task ExecuteDelete()
     {
@@ -269,11 +287,15 @@ else
         }
     }
 
-    private async Task LoadUsers() => users = await AdminService.GetPlayersAsync();
+    private async Task LoadUsers()
+    {
+        users = await AdminService.GetPlayersAsync();
+    }
 
     public void Dispose()
     {
         _isDisposed = true;
         Notifier.OnPlayerUpdated -= HandleUpdate;
     }
+
 }

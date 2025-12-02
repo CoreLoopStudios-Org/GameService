@@ -19,28 +19,35 @@ public struct LuckyMineState : IGameState
     [FieldOffset(48)] public float RewardSlope;
     [FieldOffset(52)] public ulong DeadPlayersMask;
 
-    public bool IsMine(int index) => 
-        index < 64 
-            ? (MineMask0 & (1UL << index)) != 0 
+    public bool IsMine(int index)
+    {
+        return index < 64
+            ? (MineMask0 & (1UL << index)) != 0
             : (MineMask1 & (1UL << (index - 64))) != 0;
+    }
 
-    public bool IsRevealed(int index) => 
-        index < 64 
-            ? (RevealedMask0 & (1UL << index)) != 0 
+    public bool IsRevealed(int index)
+    {
+        return index < 64
+            ? (RevealedMask0 & (1UL << index)) != 0
             : (RevealedMask1 & (1UL << (index - 64))) != 0;
+    }
 
     public void SetRevealed(int index)
     {
-        if (index < 64) RevealedMask0 |= (1UL << index);
-        else RevealedMask1 |= (1UL << (index - 64));
+        if (index < 64) RevealedMask0 |= 1UL << index;
+        else RevealedMask1 |= 1UL << (index - 64);
     }
 
     public void SetDead(int playerSeat)
     {
-        if (playerSeat < 64) DeadPlayersMask |= (1UL << playerSeat);
+        if (playerSeat < 64) DeadPlayersMask |= 1UL << playerSeat;
     }
 
-    public bool IsDead(int playerSeat) => (DeadPlayersMask & (1UL << playerSeat)) != 0;
+    public bool IsDead(int playerSeat)
+    {
+        return (DeadPlayersMask & (1UL << playerSeat)) != 0;
+    }
 }
 
 public enum LuckyMineStatus : byte

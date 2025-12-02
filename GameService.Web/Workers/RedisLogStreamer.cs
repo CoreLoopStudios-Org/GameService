@@ -8,32 +8,33 @@ using StackExchange.Redis;
 namespace GameService.Web.Workers;
 
 public class RedisLogStreamer(
-    IConnectionMultiplexer redis, 
-    PlayerUpdateNotifier notifier, 
+    IConnectionMultiplexer redis,
+    PlayerUpdateNotifier notifier,
     ILogger<RedisLogStreamer> logger) : BackgroundService
 {
-    private static readonly JsonSerializerOptions _jsonOptions = new() 
-    { 
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
         PropertyNameCaseInsensitive = true,
         AllowTrailingCommas = true
     };
 
     private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMilliseconds(500);
+
     private readonly Channel<PlayerUpdatedMessage> _updateChannel = Channel.CreateBounded<PlayerUpdatedMessage>(
         new BoundedChannelOptions(100) { FullMode = BoundedChannelFullMode.DropOldest });
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _ = Task.Run(() => ProcessUpdatesThrottledAsync(stoppingToken), stoppingToken);
-        
+
         while (!stoppingToken.IsCancellationRequested)
-        {
             try
             {
                 var sub = redis.GetSubscriber();
                 var channel = await sub.SubscribeAsync(RedisChannel.Literal(GameConstants.PlayerUpdatesChannel));
 
-                logger.LogInformation("✅ [RedisLogStreamer] Connected and listening on channel: {Channel}", GameConstants.PlayerUpdatesChannel);
+                logger.LogInformation("✅ [RedisLogStreamer] Connected and listening on channel: {Channel}",
+                    GameConstants.PlayerUpdatesChannel);
 
                 await foreach (var message in channel.WithCancellation(stoppingToken))
                 {
@@ -46,14 +47,12 @@ public class RedisLogStreamer(
 
                         var update = JsonSerializer.Deserialize<PlayerUpdatedMessage>(payload, _jsonOptions);
 
-                        if (update != null)
-                        {
-                            _updateChannel.Writer.TryWrite(update);
-                        }
+                        if (update != null) _updateChannel.Writer.TryWrite(update);
                     }
                     catch (JsonException jex)
                     {
-                        logger.LogError(jex, "❌ [RedisLogStreamer] JSON Deserialization failed for message: {Message}", message.Message);
+                        logger.LogError(jex, "❌ [RedisLogStreamer] JSON Deserialization failed for message: {Message}",
+                            message.Message);
                     }
                     catch (Exception ex)
                     {
@@ -70,42 +69,33 @@ public class RedisLogStreamer(
                 logger.LogError(ex, "⚠️ [RedisLogStreamer] Connection failed. Retrying in 5s...");
                 await Task.Delay(5000, stoppingToken);
             }
-        }
     }
-    
+
     private async Task ProcessUpdatesThrottledAsync(CancellationToken stoppingToken)
     {
         var pendingUpdates = new Dictionary<string, PlayerUpdatedMessage>();
         var lastFlush = DateTime.UtcNow;
-        
+
         while (!stoppingToken.IsCancellationRequested)
-        {
             try
             {
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 cts.CancelAfter(ThrottleInterval);
-                
+
                 try
                 {
                     while (await _updateChannel.Reader.WaitToReadAsync(cts.Token))
-                    {
-                        while (_updateChannel.Reader.TryRead(out var update))
-                        {
-                            pendingUpdates[update.UserId] = update;
-                        }
-                    }
+                    while (_updateChannel.Reader.TryRead(out var update))
+                        pendingUpdates[update.UserId] = update;
                 }
                 catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
                 {
                 }
 
-                if (pendingUpdates.Count > 0 && (DateTime.UtcNow - lastFlush) >= ThrottleInterval)
+                if (pendingUpdates.Count > 0 && DateTime.UtcNow - lastFlush >= ThrottleInterval)
                 {
-                    foreach (var update in pendingUpdates.Values)
-                    {
-                        notifier.Notify(update);
-                    }
-                    
+                    foreach (var update in pendingUpdates.Values) notifier.Notify(update);
+
                     logger.LogDebug("📤 [RedisLogStreamer] Flushed {Count} throttled updates", pendingUpdates.Count);
                     pendingUpdates.Clear();
                     lastFlush = DateTime.UtcNow;
@@ -119,6 +109,5 @@ public class RedisLogStreamer(
             {
                 logger.LogError(ex, "❌ [RedisLogStreamer] Error in throttled processor");
             }
-        }
     }
 }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using GameService.GameCore;
 using Microsoft.AspNetCore.Builder;
@@ -8,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace GameService.Ludo;
 
 /// <summary>
-/// Ludo game module - registers all Ludo-specific services with keyed DI.
+///     Ludo game module - registers all Ludo-specific services with keyed DI.
 /// </summary>
 public sealed class LudoModule : IGameModule
 {
@@ -27,7 +28,7 @@ public sealed class LudoModule : IGameModule
         var admin = endpoints.MapGroup("/admin/ludo").RequireAuthorization("AdminPolicy");
 
         admin.MapPost("/{roomId}/roll", async (
-            string roomId, 
+            string roomId,
             IServiceProvider sp,
             IGameBroadcaster broadcaster) =>
         {
@@ -36,18 +37,18 @@ public sealed class LudoModule : IGameModule
 
             var command = new GameCommand("ADMIN", "roll", default);
             var result = await engine.ExecuteAsync(roomId, command);
-            
+
             if (result.Success)
             {
                 await broadcaster.BroadcastResultAsync(roomId, result);
                 return Results.Ok(result);
             }
-            
+
             return Results.BadRequest(result);
         });
 
         admin.MapPost("/{roomId}/move/{tokenIndex:int}", async (
-            string roomId, 
+            string roomId,
             int tokenIndex,
             IServiceProvider sp,
             IGameBroadcaster broadcaster) =>
@@ -55,19 +56,19 @@ public sealed class LudoModule : IGameModule
             var engine = sp.GetKeyedService<IGameEngine>(GameName);
             if (engine == null) return Results.NotFound("Ludo engine not available");
 
-            var payload = System.Text.Json.JsonDocument.Parse($"{{\"tokenIndex\":{tokenIndex}}}").RootElement;
+            var payload = JsonDocument.Parse($"{{\"tokenIndex\":{tokenIndex}}}").RootElement;
             var command = new GameCommand("ADMIN", "move", payload);
             var result = await engine.ExecuteAsync(roomId, command);
-            
+
             if (result.Success)
             {
                 await broadcaster.BroadcastResultAsync(roomId, result);
                 return Results.Ok(result);
             }
-            
+
             return Results.BadRequest(result);
         });
-        
+
         admin.MapGet("/{roomId}/state", async (
             string roomId,
             IServiceProvider sp) =>

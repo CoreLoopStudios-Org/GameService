@@ -38,7 +38,7 @@ GET {{host}}/game/me
 Authorization: Bearer {{auth_token}}
 
 > {%
-    client.test("Status OK", function() {
+    client.test("Status OK", function () {
         client.assert(response.status === 200, "Response status is not 200");
     });
     client.global.set("starting_coins", response.body.coins);
@@ -54,7 +54,7 @@ Content-Type: {{contentType}}
 }
 
 > {%
-    client.test("Balance Updated", function() {
+    client.test("Balance Updated", function () {
         client.assert(response.body.newBalance > client.global.get("starting_coins"), "Balance did not increase");
     });
 %}
@@ -69,7 +69,7 @@ Content-Type: {{contentType}}
 }
 
 > {%
-    client.test("Rejected Insufficient Funds", function() {
+    client.test("Rejected Insufficient Funds", function () {
         client.assert(response.status === 400, "Should return Bad Request");
     });
 %}

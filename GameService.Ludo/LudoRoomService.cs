@@ -5,16 +5,14 @@ using Microsoft.Extensions.Logging;
 namespace GameService.Ludo;
 
 /// <summary>
-/// Ludo room service for room lifecycle management.
-/// Uses the generic repository pattern.
+///     Ludo room service for room lifecycle management.
+///     Uses the generic repository pattern.
 /// </summary>
 public sealed class LudoRoomService : IGameRoomService
 {
+    private readonly ILogger<LudoRoomService> _logger;
     private readonly IGameRepository<LudoState> _repository;
     private readonly IRoomRegistry _roomRegistry;
-    private readonly ILogger<LudoRoomService> _logger;
-
-    public string GameType => "Ludo";
 
     public LudoRoomService(
         IGameRepositoryFactory repositoryFactory,
@@ -26,26 +24,20 @@ public sealed class LudoRoomService : IGameRoomService
         _logger = logger;
     }
 
+    public string GameType => "Ludo";
+
     public async Task<string> CreateRoomAsync(GameRoomMeta meta)
     {
         var roomId = GenerateShortId();
-        
+
         var engine = new LudoEngine(new ServerDiceRoller());
         engine.InitNewGame(meta.MaxPlayers);
-        
+
         if (engine.State.Winner == 0) engine.State.Winner = 255;
 
         await _repository.SaveAsync(roomId, engine.State, meta);
         _logger.LogInformation("Created Ludo room {RoomId}", roomId);
         return roomId;
-    }
-
-    private string GenerateShortId()
-    {
-        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-        return string.Create(6, chars, (span, charset) => {
-            for(int i=0; i<span.Length; i++) span[i] = charset[RandomNumberGenerator.GetInt32(charset.Length)];
-        });
     }
 
     public async Task DeleteRoomAsync(string roomId)
@@ -69,10 +61,10 @@ public sealed class LudoRoomService : IGameRoomService
         var takenSeats = ctx.Meta.PlayerSeats.Values.ToHashSet();
         var seatIndex = -1;
 
-        for (int i = 0; i < 4; i++)
+        for (var i = 0; i < 4; i++)
         {
-            bool isSeatActive = (ctx.State.ActiveSeats & (1 << i)) != 0;
-            
+            var isSeatActive = (ctx.State.ActiveSeats & (1 << i)) != 0;
+
             if (isSeatActive && !takenSeats.Contains(i))
             {
                 seatIndex = i;
@@ -92,7 +84,7 @@ public sealed class LudoRoomService : IGameRoomService
         await _repository.SaveAsync(roomId, ctx.State, newMeta);
 
         _logger.LogInformation("Player {UserId} joined room {RoomId} at seat {Seat}", userId, roomId, seatIndex);
-        
+
         return JoinRoomResult.Ok(seatIndex);
     }
 
@@ -116,5 +108,14 @@ public sealed class LudoRoomService : IGameRoomService
     {
         var ctx = await _repository.LoadAsync(roomId);
         return ctx?.Meta;
+    }
+
+    private string GenerateShortId()
+    {
+        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        return string.Create(6, chars, (span, charset) =>
+        {
+            for (var i = 0; i < span.Length; i++) span[i] = charset[RandomNumberGenerator.GetInt32(charset.Length)];
+        });
     }
 }

@@ -3,8 +3,8 @@ using System.Runtime.CompilerServices;
 namespace GameService.GameCore;
 
 /// <summary>
-/// Generic repository for game state persistence.
-/// All games use the same repository implementation with different TState types.
+///     Generic repository for game state persistence.
+///     All games use the same repository implementation with different TState types.
 /// </summary>
 public interface IGameRepository<TState> where TState : struct
 {
@@ -16,13 +16,13 @@ public interface IGameRepository<TState> where TState : struct
 }
 
 /// <summary>
-/// Game context containing state and metadata
+///     Game context containing state and metadata
 /// </summary>
-public sealed record GameContext<TState>(string RoomId, TState State, GameRoomMeta Meta) 
+public sealed record GameContext<TState>(string RoomId, TState State, GameRoomMeta Meta)
     where TState : struct;
 
 /// <summary>
-/// Factory for creating typed game repositories
+///     Factory for creating typed game repositories
 /// </summary>
 public interface IGameRepositoryFactory
 {
@@ -30,27 +30,25 @@ public interface IGameRepositoryFactory
 }
 
 /// <summary>
-/// Marker interface for game states - enforces struct constraint at compile time
+///     Marker interface for game states - enforces struct constraint at compile time
 /// </summary>
 public interface IGameState
 {
 }
 
 /// <summary>
-/// Validates game state structs at startup
+///     Validates game state structs at startup
 /// </summary>
 public static class GameStateValidator
 {
     private const int MaxStateSizeBytes = 1024;
-    
+
     public static void Validate<T>() where T : struct, IGameState
     {
         var size = Unsafe.SizeOf<T>();
         if (size > MaxStateSizeBytes)
-        {
             throw new InvalidOperationException(
                 $"Game state {typeof(T).Name} is {size} bytes, exceeding the {MaxStateSizeBytes} byte limit. " +
                 "Consider using more compact data structures.");
-        }
     }
 }

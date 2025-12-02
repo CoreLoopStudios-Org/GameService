@@ -1,14 +1,12 @@
 @page "/games/{RoomId}"
+@using System.Text.Json
+@using GameService.LuckyMine
+@using GameService.Web.Components.LuckyMine
+@using GameService.Web.Components.Ludo
 @attribute [Authorize]
 @rendermode InteractiveServer
 @inject GameAdminService AdminService
 @inject NavigationManager Nav
-@using System.Text.Json
-@using GameService.Ludo
-@using GameService.GameCore
-@using GameService.Web.Components.Ludo
-@using GameService.LuckyMine
-@using GameService.Web.Components.LuckyMine
 
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -29,12 +27,12 @@
     }
     else if (ludoState != null)
     {
-        <LudoAdminPanel RoomId="@RoomId" State="ludoState" OnRefresh="LoadGame" />
+        <LudoAdminPanel RoomId="@RoomId" State="ludoState" OnRefresh="LoadGame"/>
     }
     else if (luckyMineState != null)
     {
         <!-- Pass the FULL Dto here -->
-        <LuckyMineAdminPanel Dto="luckyMineState" />
+        <LuckyMineAdminPanel Dto="luckyMineState"/>
     }
     else if (!string.IsNullOrEmpty(rawJson))
     {
@@ -72,13 +70,13 @@
     {
         isLoading = true;
         StateHasChanged();
-        
+
         try
         {
             var json = await AdminService.GetGameStateAsync(RoomId);
             if (json.HasValue)
             {
-                if (json.Value.TryGetProperty("meta", out var metaProp) && 
+                if (json.Value.TryGetProperty("meta", out var metaProp) &&
                     metaProp.TryGetProperty("gameType", out var typeProp))
                 {
                     gameType = typeProp.GetString();
@@ -94,7 +92,7 @@
                     if (fullStateJson.HasValue)
                     {
                         luckyMineState = JsonSerializer.Deserialize<LuckyMineFullDto>(
-                            fullStateJson.Value.GetRawText(), 
+                            fullStateJson.Value.GetRawText(),
                             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                     }
                 }
@@ -127,7 +125,7 @@
             {
                 if (tokensProp.ValueKind == JsonValueKind.Array)
                 {
-                    int i = 0;
+                    var i = 0;
                     foreach (var token in tokensProp.EnumerateArray())
                     {
                         if (i < 16) tokens[i++] = (byte)token.GetInt32();

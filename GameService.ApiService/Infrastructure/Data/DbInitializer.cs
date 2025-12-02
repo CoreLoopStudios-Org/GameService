@@ -14,10 +14,7 @@ public static class DbInitializer
 
         await db.Database.EnsureCreatedAsync();
 
-        if (!await roleManager.RoleExistsAsync("Admin"))
-        {
-            await roleManager.CreateAsync(new IdentityRole("Admin"));
-        }
+        if (!await roleManager.RoleExistsAsync("Admin")) await roleManager.CreateAsync(new IdentityRole("Admin"));
 
         const string adminEmail = "admin@gameservice.com";
         if (await userManager.FindByEmailAsync(adminEmail) is null)

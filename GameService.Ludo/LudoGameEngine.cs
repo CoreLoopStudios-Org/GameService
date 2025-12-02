@@ -1,25 +1,19 @@
-using System.Text.Json;
 using GameService.GameCore;
 using Microsoft.Extensions.Logging;
 
 namespace GameService.Ludo;
 
 /// <summary>
-/// Ludo game engine implementing the unified IGameEngine interface.
-/// Handles all game actions through the command pattern.
-/// Implements ITurnBasedGameEngine for automatic timeout handling.
+///     Ludo game engine implementing the unified IGameEngine interface.
+///     Handles all game actions through the command pattern.
+///     Implements ITurnBasedGameEngine for automatic timeout handling.
 /// </summary>
 public sealed class LudoGameEngine : ITurnBasedGameEngine
 {
-    private readonly IGameRepository<LudoState> _repository;
-    private readonly IRoomRegistry _roomRegistry;
     private readonly IDiceRoller _diceRoller;
     private readonly ILogger<LudoGameEngine> _logger;
-
-    public string GameType => "Ludo";
-    
-    /// <summary>Turn timeout: 30 seconds per turn</summary>
-    public int TurnTimeoutSeconds => 30;
+    private readonly IGameRepository<LudoState> _repository;
+    private readonly IRoomRegistry _roomRegistry;
 
     public LudoGameEngine(
         IGameRepositoryFactory repositoryFactory,
@@ -32,6 +26,11 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         _logger = logger;
     }
 
+    public string GameType => "Ludo";
+
+    /// <summary>Turn timeout: 30 seconds per turn</summary>
+    public int TurnTimeoutSeconds => 30;
+
     public async Task<GameActionResult> ExecuteAsync(string roomId, GameCommand command)
     {
         return command.Action.ToLowerInvariant() switch
@@ -41,69 +40,61 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
             _ => GameActionResult.Error($"Unknown action: {command.Action}")
         };
     }
-    
+
     /// <summary>
-    /// Check for turn timeout and auto-play if player is AFK.
+    ///     Check for turn timeout and auto-play if player is AFK.
     /// </summary>
     public async Task<GameActionResult?> CheckTimeoutsAsync(string roomId)
     {
         var ctx = await _repository.LoadAsync(roomId);
         if (ctx == null) return null;
-        
-        // Game already ended
+
         if (ctx.State.Winner != 255) return null;
-        
-        // Check if turn has timed out
+
         var elapsed = DateTimeOffset.UtcNow - ctx.Meta.TurnStartedAt;
         if (elapsed.TotalSeconds < TurnTimeoutSeconds) return null;
-        
+
         _logger.LogInformation("Turn timeout in room {RoomId} for player {Player}", roomId, ctx.State.CurrentPlayer);
-        
-        // Auto-play: Roll if needed, then make best available move or pass
+
         var engine = new LudoEngine(ctx.State, _diceRoller);
         var events = new List<GameEvent>();
-        
+
         events.Add(new GameEvent("TurnTimeout", new { Player = ctx.State.CurrentPlayer }));
-        
+
         if (ctx.State.LastDiceRoll == 0)
-        {
-            // Auto-roll
             if (engine.TryRollDice(out var rollResult))
-            {
-                events.Add(new GameEvent("DiceRolled", new { Value = rollResult.DiceValue, Player = ctx.State.CurrentPlayer, AutoPlay = true }));
-            }
-        }
-        
-        // Try to make a move
+                events.Add(new GameEvent("DiceRolled",
+                    new { Value = rollResult.DiceValue, Player = ctx.State.CurrentPlayer, AutoPlay = true }));
+
         var legalMoves = engine.GetLegalMoves();
         if (legalMoves.Count > 0)
         {
-            // Pick first legal move (simple AI)
             var tokenIndex = legalMoves[0];
             if (engine.TryMoveToken(tokenIndex, out var moveResult))
             {
-                events.Add(new GameEvent("TokenMoved", new { Player = ctx.State.CurrentPlayer, TokenIndex = tokenIndex, NewPosition = moveResult.NewPos, AutoPlay = true }));
-                
+                events.Add(new GameEvent("TokenMoved",
+                    new
+                    {
+                        Player = ctx.State.CurrentPlayer, TokenIndex = tokenIndex, NewPosition = moveResult.NewPos,
+                        AutoPlay = true
+                    }));
+
                 if ((moveResult.Status & LudoStatus.CapturedOpponent) != 0)
-                {
-                    events.Add(new GameEvent("TokenCaptured", new { CapturedPlayer = moveResult.CapturedPid, CapturedToken = moveResult.CapturedTid }));
-                }
-                
+                    events.Add(new GameEvent("TokenCaptured",
+                        new { CapturedPlayer = moveResult.CapturedPid, CapturedToken = moveResult.CapturedTid }));
+
                 if ((moveResult.Status & LudoStatus.GameWon) != 0)
-                {
                     events.Add(new GameEvent("GameWon", new { Winner = ctx.State.CurrentPlayer }));
-                }
             }
         }
-        
-        // Update turn timestamp
+
         var newMeta = ctx.Meta with { TurnStartedAt = DateTimeOffset.UtcNow };
         await _repository.SaveAsync(roomId, engine.State, newMeta);
-        
+
         events.Add(new GameEvent("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
-        
+
         var state = await GetStateAsync(roomId);
-        
+
         return new GameActionResult
         {
             Success = true,
@@ -122,7 +113,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
 
         if (!ctx.Meta.PlayerSeats.TryGetValue(userId, out var seatIndex))
             return [];
-            
+
         if (ctx.State.CurrentPlayer != seatIndex)
             return [];
 
@@ -134,10 +125,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         {
             var engine = new LudoEngine(ctx.State, _diceRoller);
             var moves = engine.GetLegalMoves();
-            foreach (var tokenIndex in moves)
-            {
-                actions.Add($"move:{tokenIndex}");
-            }
+            foreach (var tokenIndex in moves) actions.Add($"move:{tokenIndex}");
         }
 
         return actions;
@@ -152,10 +140,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         var legalMoves = engine.GetLegalMoves();
 
         var tokenArray = new byte[16];
-        for (int i = 0; i < 16; i++)
-        {
-            tokenArray[i] = ctx.State.Tokens[i];
-        }
+        for (var i = 0; i < 16; i++) tokenArray[i] = ctx.State.Tokens[i];
 
         return new GameStateResponse
         {
@@ -204,7 +189,6 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         if (!engine.TryRollDice(out var result))
             return GameActionResult.Error($"Cannot roll: {result.Status}");
 
-        // Reset turn timer on action
         var newMeta = ctx.Meta with { TurnStartedAt = DateTimeOffset.UtcNow };
         await _repository.SaveAsync(roomId, engine.State, newMeta);
 
@@ -214,12 +198,10 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         };
 
         if (result.Status == LudoStatus.TurnPassed || result.Status == LudoStatus.ForfeitTurn)
-        {
-            events.Add(new("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
-        }
+            events.Add(new GameEvent("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
 
         var state = await GetStateAsync(roomId);
-        
+
         _logger.LogInformation("Player {UserId} rolled {Dice} in room {RoomId}", userId, result.DiceValue, roomId);
 
         return new GameActionResult
@@ -257,42 +239,35 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         if (!engine.TryMoveToken(tokenIndex, out var result))
             return GameActionResult.Error($"Cannot move token: {result.Status}");
 
-        // Reset turn timer on action
         var newMeta = ctx.Meta with { TurnStartedAt = DateTimeOffset.UtcNow };
         await _repository.SaveAsync(roomId, engine.State, newMeta);
 
         var events = new List<GameEvent>
         {
-            new("TokenMoved", new 
-            { 
-                Player = seatIndex, 
-                TokenIndex = tokenIndex, 
-                NewPosition = result.NewPos 
+            new("TokenMoved", new
+            {
+                Player = seatIndex,
+                TokenIndex = tokenIndex,
+                NewPosition = result.NewPos
             })
         };
 
         if ((result.Status & LudoStatus.CapturedOpponent) != 0)
-        {
-            events.Add(new("TokenCaptured", new 
-            { 
-                CapturedPlayer = result.CapturedPid, 
-                CapturedToken = result.CapturedTid 
+            events.Add(new GameEvent("TokenCaptured", new
+            {
+                CapturedPlayer = result.CapturedPid,
+                CapturedToken = result.CapturedTid
             }));
-        }
 
         if ((result.Status & LudoStatus.GameWon) != 0)
-        {
-            events.Add(new("GameWon", new { Winner = seatIndex, WinnerUserId = userId }));
-        }
+            events.Add(new GameEvent("GameWon", new { Winner = seatIndex, WinnerUserId = userId }));
 
         if ((result.Status & LudoStatus.ExtraTurn) == 0)
-        {
-            events.Add(new("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
-        }
+            events.Add(new GameEvent("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
 
         var state = await GetStateAsync(roomId);
 
-        _logger.LogInformation("Player {UserId} moved token {Token} to {Position} in room {RoomId}", 
+        _logger.LogInformation("Player {UserId} moved token {Token} to {Position} in room {RoomId}",
             userId, tokenIndex, result.NewPos, roomId);
 
         return new GameActionResult
@@ -306,7 +281,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
 }
 
 /// <summary>
-/// DTO for Ludo game state (JSON-serializable)
+///     DTO for Ludo game state (JSON-serializable)
 /// </summary>
 public sealed record LudoStateDto
 {

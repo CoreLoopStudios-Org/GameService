@@ -3,53 +3,53 @@ using System.Text.Json;
 namespace GameService.GameCore;
 
 /// <summary>
-/// Core game engine interface - handles all game actions via command pattern.
-/// Each game type registers ONE engine with a keyed service.
+///     Core game engine interface - handles all game actions via command pattern.
+///     Each game type registers ONE engine with a keyed service.
 /// </summary>
 public interface IGameEngine
 {
     /// <summary>
-    /// Unique identifier for this game type (e.g., "Ludo", "Chess", "Poker")
+    ///     Unique identifier for this game type (e.g., "Ludo", "Chess", "Poker")
     /// </summary>
     string GameType { get; }
-    
+
     /// <summary>
-    /// Execute any game action (Roll, Move, Bet, Draw, etc.)
+    ///     Execute any game action (Roll, Move, Bet, Draw, etc.)
     /// </summary>
     Task<GameActionResult> ExecuteAsync(string roomId, GameCommand command);
-    
+
     /// <summary>
-    /// Get legal actions for the current player in a room
+    ///     Get legal actions for the current player in a room
     /// </summary>
     Task<IReadOnlyList<string>> GetLegalActionsAsync(string roomId, string userId);
-    
+
     /// <summary>
-    /// Get the current game state for a room
+    ///     Get the current game state for a room
     /// </summary>
     Task<GameStateResponse?> GetStateAsync(string roomId);
 }
 
 /// <summary>
-/// Extended interface for turn-based games with timeout handling.
-/// Games implementing this will have automatic AFK/timeout handling.
+///     Extended interface for turn-based games with timeout handling.
+///     Games implementing this will have automatic AFK/timeout handling.
 /// </summary>
 public interface ITurnBasedGameEngine : IGameEngine
 {
     /// <summary>
-    /// Turn timeout in seconds. After this time, ForceEndTurn or AutoPlay is triggered.
+    ///     Turn timeout in seconds. After this time, ForceEndTurn or AutoPlay is triggered.
     /// </summary>
     int TurnTimeoutSeconds { get; }
-    
+
     /// <summary>
-    /// Checks a room for player timeouts and forces moves/forfeits if necessary.
-    /// Called by a background worker every few seconds.
+    ///     Checks a room for player timeouts and forces moves/forfeits if necessary.
+    ///     Called by a background worker every few seconds.
     /// </summary>
     /// <returns>Result if an action was taken, null if no timeout occurred</returns>
     Task<GameActionResult?> CheckTimeoutsAsync(string roomId);
 }
 
 /// <summary>
-/// Command sent from client to execute a game action
+///     Command sent from client to execute a game action
 /// </summary>
 public sealed record GameCommand(
     string UserId,
@@ -62,7 +62,7 @@ public sealed record GameCommand(
             return null;
         return Payload.Deserialize<T>();
     }
-    
+
     public int GetInt(string propertyName, int defaultValue = 0)
     {
         if (Payload.TryGetProperty(propertyName, out var prop) && prop.TryGetInt32(out var value))
@@ -72,7 +72,7 @@ public sealed record GameCommand(
 }
 
 /// <summary>
-/// Result of executing a game action
+///     Result of executing a game action
 /// </summary>
 public sealed record GameActionResult
 {
@@ -81,19 +81,25 @@ public sealed record GameActionResult
     public bool ShouldBroadcast { get; init; }
     public object? NewState { get; init; }
     public IReadOnlyList<GameEvent> Events { get; init; } = [];
-    
-    public static GameActionResult Error(string message) => 
-        new() { Success = false, ErrorMessage = message, ShouldBroadcast = false, Events = [] };
-    
-    public static GameActionResult Ok(object? state = null, params GameEvent[] events) =>
-        new() { Success = true, ShouldBroadcast = true, NewState = state, Events = events };
-    
-    public static GameActionResult OkNoState(params GameEvent[] events) =>
-        new() { Success = true, ShouldBroadcast = false, Events = events };
+
+    public static GameActionResult Error(string message)
+    {
+        return new GameActionResult { Success = false, ErrorMessage = message, ShouldBroadcast = false, Events = [] };
+    }
+
+    public static GameActionResult Ok(object? state = null, params GameEvent[] events)
+    {
+        return new GameActionResult { Success = true, ShouldBroadcast = true, NewState = state, Events = events };
+    }
+
+    public static GameActionResult OkNoState(params GameEvent[] events)
+    {
+        return new GameActionResult { Success = true, ShouldBroadcast = false, Events = events };
+    }
 }
 
 /// <summary>
-/// Event emitted by game engine for broadcasting to clients and audit logging
+///     Event emitted by game engine for broadcasting to clients and audit logging
 /// </summary>
 public sealed record GameEvent(string EventName, object Data)
 {
@@ -101,7 +107,7 @@ public sealed record GameEvent(string EventName, object Data)
 }
 
 /// <summary>
-/// Standardized game state response for API/SignalR
+///     Standardized game state response for API/SignalR
 /// </summary>
 public sealed record GameStateResponse
 {
@@ -113,7 +119,7 @@ public sealed record GameStateResponse
 }
 
 /// <summary>
-/// Common room metadata shared across all game types
+///     Common room metadata shared across all game types
 /// </summary>
 public sealed record GameRoomMeta
 {
@@ -122,14 +128,14 @@ public sealed record GameRoomMeta
     public string GameType { get; init; } = "";
     public int MaxPlayers { get; init; } = 4;
 
-    public long EntryFee { get; init; } = 0; 
+    public long EntryFee { get; init; } = 0;
     public Dictionary<string, string> Config { get; init; } = new();
 
     public int CurrentPlayerCount => PlayerSeats.Count;
-    
+
     /// <summary>Timestamp when the current turn started (for timeout tracking)</summary>
     public DateTimeOffset TurnStartedAt { get; init; } = DateTimeOffset.UtcNow;
-    
+
     /// <summary>Tracks players who have disconnected but may reconnect</summary>
     public Dictionary<string, DateTimeOffset> DisconnectedPlayers { get; init; } = new();
 }

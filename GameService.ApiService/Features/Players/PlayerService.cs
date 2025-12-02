@@ -17,8 +17,8 @@ public class PlayerService(GameDbContext db) : IPlayerService
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.UserId == userId);
 
-        return profile is not null 
-            ? new PlayerProfileResponse(profile.UserId, profile.Coins) 
+        return profile is not null
+            ? new PlayerProfileResponse(profile.UserId, profile.Coins)
             : null;
     }
 }

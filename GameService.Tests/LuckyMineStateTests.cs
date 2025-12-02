@@ -1,10 +1,10 @@
+using System.Runtime.InteropServices;
 using GameService.LuckyMine;
-using GameService.GameCore;
 
 namespace GameService.Tests;
 
 /// <summary>
-/// Unit tests for the LuckyMine game state and logic
+///     Unit tests for the LuckyMine game state and logic
 /// </summary>
 [TestFixture]
 public class LuckyMineStateTests
@@ -14,10 +14,9 @@ public class LuckyMineStateTests
     {
         var state = new LuckyMineState
         {
-            MineMask0 = 0b1010, // Mines at positions 1 and 3
-            TotalTiles = 100
+            MineMask0 = 0b1010, TotalTiles = 100
         };
-        
+
         Assert.Multiple(() =>
         {
             Assert.That(state.IsMine(0), Is.False);
@@ -32,10 +31,9 @@ public class LuckyMineStateTests
     {
         var state = new LuckyMineState
         {
-            MineMask1 = 0b0101, // Mines at positions 64 and 66
-            TotalTiles = 100
+            MineMask1 = 0b0101, TotalTiles = 100
         };
-        
+
         Assert.Multiple(() =>
         {
             Assert.That(state.IsMine(64), Is.True);
@@ -49,21 +47,18 @@ public class LuckyMineStateTests
     public void IsRevealed_InitiallyAllHidden()
     {
         var state = new LuckyMineState { TotalTiles = 100 };
-        
-        for (int i = 0; i < 100; i++)
-        {
-            Assert.That(state.IsRevealed(i), Is.False, $"Tile {i} should be hidden");
-        }
+
+        for (var i = 0; i < 100; i++) Assert.That(state.IsRevealed(i), Is.False, $"Tile {i} should be hidden");
     }
 
     [Test]
     public void SetRevealed_CorrectlyReveals_LowerBits()
     {
         var state = new LuckyMineState { TotalTiles = 100 };
-        
+
         state.SetRevealed(5);
         state.SetRevealed(10);
-        
+
         Assert.Multiple(() =>
         {
             Assert.That(state.IsRevealed(5), Is.True);
@@ -76,10 +71,10 @@ public class LuckyMineStateTests
     public void SetRevealed_CorrectlyReveals_UpperBits()
     {
         var state = new LuckyMineState { TotalTiles = 100 };
-        
+
         state.SetRevealed(70);
         state.SetRevealed(80);
-        
+
         Assert.Multiple(() =>
         {
             Assert.That(state.IsRevealed(70), Is.True);
@@ -92,21 +87,18 @@ public class LuckyMineStateTests
     public void IsDead_InitiallyAllAlive()
     {
         var state = new LuckyMineState();
-        
-        for (int i = 0; i < 10; i++)
-        {
-            Assert.That(state.IsDead(i), Is.False, $"Player {i} should be alive");
-        }
+
+        for (var i = 0; i < 10; i++) Assert.That(state.IsDead(i), Is.False, $"Player {i} should be alive");
     }
 
     [Test]
     public void SetDead_CorrectlyMarksPlayerDead()
     {
         var state = new LuckyMineState();
-        
+
         state.SetDead(2);
         state.SetDead(5);
-        
+
         Assert.Multiple(() =>
         {
             Assert.That(state.IsDead(0), Is.False);
@@ -120,7 +112,6 @@ public class LuckyMineStateTests
     [Test]
     public void StateSize_Is64Bytes()
     {
-        // Verify struct layout is correct for Redis serialization
-        Assert.That(System.Runtime.InteropServices.Marshal.SizeOf<LuckyMineState>(), Is.EqualTo(64));
+        Assert.That(Marshal.SizeOf<LuckyMineState>(), Is.EqualTo(64));
     }
 }

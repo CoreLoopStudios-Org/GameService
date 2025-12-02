@@ -3,20 +3,20 @@ using Microsoft.JSInterop;
 namespace GameService.Web.Services;
 
 /// <summary>
-/// Service for playing sound effects using JS interop.
-/// Enhances game feel with audio feedback.
+///     Service for playing sound effects using JS interop.
+///     Enhances game feel with audio feedback.
 /// </summary>
 public class SoundService(IJSRuntime jsRuntime)
 {
     private bool _isInitialized;
-    
+
     /// <summary>
-    /// Initialize the audio context (required for browser autoplay policies)
+    ///     Initialize the audio context (required for browser autoplay policies)
     /// </summary>
     public async Task InitializeAsync()
     {
         if (_isInitialized) return;
-        
+
         try
         {
             await jsRuntime.InvokeVoidAsync("GameSounds.init");
@@ -24,30 +24,43 @@ public class SoundService(IJSRuntime jsRuntime)
         }
         catch (JSException)
         {
-            // Silent fail - sounds are optional
         }
     }
-    
+
     public async Task PlayDiceRollAsync()
-        => await PlaySoundAsync("diceRoll");
-    
+    {
+        await PlaySoundAsync("diceRoll");
+    }
+
     public async Task PlayCoinWinAsync()
-        => await PlaySoundAsync("coinWin");
-    
+    {
+        await PlaySoundAsync("coinWin");
+    }
+
     public async Task PlayPlayerJoinedAsync()
-        => await PlaySoundAsync("playerJoined");
-    
+    {
+        await PlaySoundAsync("playerJoined");
+    }
+
     public async Task PlayTokenCapturedAsync()
-        => await PlaySoundAsync("tokenCaptured");
-    
+    {
+        await PlaySoundAsync("tokenCaptured");
+    }
+
     public async Task PlayGameWonAsync()
-        => await PlaySoundAsync("gameWon");
-    
+    {
+        await PlaySoundAsync("gameWon");
+    }
+
     public async Task PlayTurnTimeoutAsync()
-        => await PlaySoundAsync("turnTimeout");
-    
+    {
+        await PlaySoundAsync("turnTimeout");
+    }
+
     public async Task PlayChatMessageAsync()
-        => await PlaySoundAsync("chatMessage");
+    {
+        await PlaySoundAsync("chatMessage");
+    }
 
     private async Task PlaySoundAsync(string soundName)
     {
@@ -57,7 +70,6 @@ public class SoundService(IJSRuntime jsRuntime)
         }
         catch (JSException)
         {
-            // Silent fail - sounds are optional
         }
     }
 }

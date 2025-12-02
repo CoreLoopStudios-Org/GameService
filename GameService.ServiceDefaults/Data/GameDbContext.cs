@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GameService.ServiceDefaults.Data;
 
-public class GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPublisher? publisher = null) 
+public class GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPublisher? publisher = null)
     : IdentityDbContext<ApplicationUser>(options)
 {
     public DbSet<PlayerProfile> PlayerProfiles => Set<PlayerProfile>();
@@ -29,8 +29,7 @@ public class GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPu
         builder.Entity<PlayerProfile>()
             .HasIndex(p => p.UserId)
             .IsUnique();
-        
-        // Wallet transaction indexes for efficient queries
+
         builder.Entity<WalletTransaction>(b =>
         {
             b.HasIndex(t => t.UserId);
@@ -38,8 +37,7 @@ public class GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPu
             b.HasIndex(t => t.IdempotencyKey).IsUnique().HasFilter("\"IdempotencyKey\" IS NOT NULL");
             b.HasIndex(t => t.ReferenceId);
         });
-        
-        // Archived games indexes
+
         builder.Entity<ArchivedGame>(b =>
         {
             b.HasIndex(g => g.RoomId);
@@ -48,10 +46,19 @@ public class GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPu
         });
 
         builder.Entity<GameRoomTemplate>().HasData(
-            new GameRoomTemplate { Id = 1, Name = "Classic Ludo (4P)", GameType = "Ludo", MaxPlayers = 4, EntryFee = 100 },
+            new GameRoomTemplate
+                { Id = 1, Name = "Classic Ludo (4P)", GameType = "Ludo", MaxPlayers = 4, EntryFee = 100 },
             new GameRoomTemplate { Id = 2, Name = "1v1 Ludo", GameType = "Ludo", MaxPlayers = 2, EntryFee = 500 },
-            new GameRoomTemplate { Id = 3, Name = "Standard Mines", GameType = "LuckyMine", MaxPlayers = 20, EntryFee = 10, ConfigJson = "{\"TotalMines\":20,\"TotalTiles\":100}" },
-            new GameRoomTemplate { Id = 4, Name = "Impossible Mines", GameType = "LuckyMine", MaxPlayers = 10, EntryFee = 100, ConfigJson = "{\"TotalMines\":90,\"TotalTiles\":100}" }
+            new GameRoomTemplate
+            {
+                Id = 3, Name = "Standard Mines", GameType = "LuckyMine", MaxPlayers = 20, EntryFee = 10,
+                ConfigJson = "{\"TotalMines\":20,\"TotalTiles\":100}"
+            },
+            new GameRoomTemplate
+            {
+                Id = 4, Name = "Impossible Mines", GameType = "LuckyMine", MaxPlayers = 10, EntryFee = 100,
+                ConfigJson = "{\"TotalMines\":90,\"TotalTiles\":100}"
+            }
         );
     }
 
@@ -68,7 +75,6 @@ public class GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPu
                 .Any(e => e.State == EntityState.Added && e.Entity.User == user);
 
             if (!hasProfile && user.Profile == null)
-            {
                 PlayerProfiles.Add(new PlayerProfile
                 {
                     User = user,
@@ -76,22 +82,18 @@ public class GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPu
                     Coins = 100,
                     Version = Guid.NewGuid()
                 });
-            }
         }
 
         var addedProfiles = new List<PlayerProfile>();
         if (publisher != null)
-        {
             addedProfiles = ChangeTracker.Entries<PlayerProfile>()
                 .Where(e => e.State == EntityState.Added)
                 .Select(e => e.Entity)
                 .ToList();
-        }
 
         var result = await base.SaveChangesAsync(cancellationToken);
 
         if (result > 0 && addedProfiles.Count > 0 && publisher != null)
-        {
             foreach (var profile in addedProfiles)
             {
                 var username = profile.User?.UserName ?? "New Player";
@@ -107,7 +109,6 @@ public class GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPu
 
                 _ = Task.Run(() => publisher.PublishPlayerUpdatedAsync(message), cancellationToken);
             }
-        }
 
         return result;
     }
@@ -127,12 +128,11 @@ public class PlayerProfile
 
     public long Coins { get; set; } = 100;
 
-    [ConcurrencyCheck]
-    public Guid Version { get; set; } = Guid.NewGuid();
-    
+    [ConcurrencyCheck] public Guid Version { get; set; } = Guid.NewGuid();
+
     /// <summary>Soft delete flag - preserves referential integrity with history tables</summary>
-    public bool IsDeleted { get; set; } = false;
-    
+    public bool IsDeleted { get; set; }
+
     public DateTimeOffset? DeletedAt { get; set; }
 }
 
@@ -142,73 +142,70 @@ public class GameRoomTemplate
     public required string Name { get; set; }
     public required string GameType { get; set; }
     public int MaxPlayers { get; set; } = 4;
-    public long EntryFee { get; set; } = 0;
+    public long EntryFee { get; set; }
     public string? ConfigJson { get; set; }
 }
 
 /// <summary>
-/// Immutable transaction ledger for auditability - every coin movement is logged here.
+///     Immutable transaction ledger for auditability - every coin movement is logged here.
 /// </summary>
 public class WalletTransaction
 {
     public long Id { get; set; }
-    
-    [MaxLength(450)]
-    public required string UserId { get; set; }
-    
+
+    [MaxLength(450)] public required string UserId { get; set; }
+
     /// <summary>Amount of coins (positive for credit, negative for debit)</summary>
     public long Amount { get; set; }
-    
+
     /// <summary>Balance after this transaction</summary>
     public long BalanceAfter { get; set; }
-    
+
     /// <summary>Transaction type: Deposit, Withdrawal, EntryFee, Win, Refund, AdminAdjust</summary>
     [MaxLength(50)]
     public string TransactionType { get; set; } = "Unknown";
-    
+
     /// <summary>Human-readable description</summary>
     [MaxLength(255)]
     public string Description { get; set; } = "";
-    
+
     /// <summary>Reference to related entity (RoomId, OrderId, etc.)</summary>
     [MaxLength(100)]
     public string ReferenceId { get; set; } = "";
-    
+
     /// <summary>Idempotency key to prevent duplicate transactions</summary>
     [MaxLength(64)]
     public string? IdempotencyKey { get; set; }
-    
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
 /// <summary>
-/// Archived game record for history and replay capability.
+///     Archived game record for history and replay capability.
 /// </summary>
 public class ArchivedGame
 {
     public long Id { get; set; }
-    
-    [MaxLength(50)]
-    public required string RoomId { get; set; }
-    
-    [MaxLength(50)]
-    public required string GameType { get; set; }
-    
+
+    [MaxLength(50)] public required string RoomId { get; set; }
+
+    [MaxLength(50)] public required string GameType { get; set; }
+
     /// <summary>Serialized final game state</summary>
     public string FinalStateJson { get; set; } = "{}";
-    
+
     /// <summary>Serialized list of game events for replay</summary>
     public string EventsJson { get; set; } = "[]";
-    
+
     /// <summary>Player seats at end of game (UserId -> Seat)</summary>
     public string PlayerSeatsJson { get; set; } = "{}";
-    
+
     /// <summary>Winner's UserId (null if draw/cancelled)</summary>
     [MaxLength(450)]
     public string? WinnerUserId { get; set; }
-    
+
     public long TotalPot { get; set; }
-    
+
     public DateTimeOffset StartedAt { get; set; }
     public DateTimeOffset EndedAt { get; set; } = DateTimeOffset.UtcNow;
 }

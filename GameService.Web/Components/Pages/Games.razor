@@ -1,8 +1,8 @@
 @page "/games"
+@using GameService.GameCore
 @attribute [Authorize]
 @rendermode InteractiveServer
 @inject GameAdminService AdminService
-@using GameService.GameCore
 
 <PageTitle>Active Games</PageTitle>
 
@@ -49,6 +49,14 @@ else
 
 @code {
     private List<GameRoomDto>? games;
-    protected override async Task OnInitializedAsync() => await LoadGames();
-    private async Task LoadGames() => games = await AdminService.GetActiveGamesAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGames();
+    }
+
+    private async Task LoadGames()
+    {
+        games = await AdminService.GetActiveGamesAsync();
+    }
+
 }

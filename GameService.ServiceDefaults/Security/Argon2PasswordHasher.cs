@@ -15,14 +15,17 @@ public class Argon2PasswordHasher : IPasswordHasher<ApplicationUser>
     public string HashPassword(ApplicationUser user, string password)
     {
         var salt = CreateSalt();
-        var hash = HashPasswordInternal(password, salt, DefaultDegreeOfParallelism, DefaultMemorySize, DefaultIterations);
+        var hash = HashPasswordInternal(password, salt, DefaultDegreeOfParallelism, DefaultMemorySize,
+            DefaultIterations);
 
-        return $"$argon2id$v=19$m={DefaultMemorySize},t={DefaultIterations},p={DefaultDegreeOfParallelism}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
+        return
+            $"$argon2id$v=19$m={DefaultMemorySize},t={DefaultIterations},p={DefaultDegreeOfParallelism}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
     }
 
-    public PasswordVerificationResult VerifyHashedPassword(ApplicationUser user, string hashedPassword, string providedPassword)
+    public PasswordVerificationResult VerifyHashedPassword(ApplicationUser user, string hashedPassword,
+        string providedPassword)
     {
-        try 
+        try
         {
             var parts = hashedPassword.Split('$');
             if (parts.Length != 6) return PasswordVerificationResult.Failed;
@@ -30,12 +33,10 @@ public class Argon2PasswordHasher : IPasswordHasher<ApplicationUser>
             var paramsPart = parts[3];
             var paramMap = ParseParameters(paramsPart);
 
-            if (!paramMap.TryGetValue("m", out int memory) ||
-                !paramMap.TryGetValue("t", out int iterations) ||
-                !paramMap.TryGetValue("p", out int parallelism))
-            {
+            if (!paramMap.TryGetValue("m", out var memory) ||
+                !paramMap.TryGetValue("t", out var iterations) ||
+                !paramMap.TryGetValue("p", out var parallelism))
                 return PasswordVerificationResult.Failed;
-            }
 
             var salt = Convert.FromBase64String(parts[4]);
             var storedHash = Convert.FromBase64String(parts[5]);
@@ -59,11 +60,9 @@ public class Argon2PasswordHasher : IPasswordHasher<ApplicationUser>
         foreach (var pair in pairs)
         {
             var kv = pair.Split('=');
-            if (kv.Length == 2 && int.TryParse(kv[1], out int val))
-            {
-                result[kv[0]] = val;
-            }
+            if (kv.Length == 2 && int.TryParse(kv[1], out var val)) result[kv[0]] = val;
         }
+
         return result;
     }
 

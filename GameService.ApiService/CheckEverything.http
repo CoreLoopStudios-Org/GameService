@@ -62,6 +62,7 @@ Content-Type: {{contentType}}
     client.global.set("user_token", response.body.accessToken);
     client.log("👤 User Token: " + response.body.accessToken);
 %}
+
 ###
 
 # ==========================================
@@ -93,7 +94,7 @@ Content-Type: {{contentType}}
 }
 
 > {%
-    client.test("Balance Increased", function() {
+    client.test("Balance Increased", function () {
         client.assert(response.body.newBalance > client.global.get("initial_coins"), "Balance did not update");
     });
 %}
@@ -136,6 +137,7 @@ Content-Type: {{contentType}}
 > {%
     client.global.set("template_id", response.body);
 %}
+
 ###
 
 # ==========================================
@@ -173,7 +175,7 @@ POST {{host}}/admin/ludo/{{ludo_room_id}}/roll
 Authorization: Bearer {{admin_token}}
 
 > {%
-    client.test("Roll Successful", function() {
+    client.test("Roll Successful", function () {
         client.assert(response.status === 200, "Roll failed");
         client.global.set("dice_value", response.body.newState.state.lastDiceRoll);
     });
@@ -221,7 +223,7 @@ GET {{host}}/admin/luckymine/{{mine_room_id}}/state
 Authorization: Bearer {{admin_token}}
 
 > {%
-    client.test("Mines Configured", function() {
+    client.test("Mines Configured", function () {
         client.assert(response.body.remainingMines === 5, "Mine count incorrect");
     });
 %}

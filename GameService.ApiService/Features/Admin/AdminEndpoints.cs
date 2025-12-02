@@ -1,9 +1,8 @@
 using System.Text.Json;
-using GameService.ApiService.Features.Common;
-using GameService.ServiceDefaults.Data;
-using GameService.ServiceDefaults.DTOs;
 using GameService.GameCore;
 using GameService.ServiceDefaults;
+using GameService.ServiceDefaults.Data;
+using GameService.ServiceDefaults.DTOs;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +19,7 @@ public static class AdminEndpoints
         group.MapPost("/templates", CreateTemplate);
         group.MapDelete("/templates/{id}", DeleteTemplate);
 
-        group.MapPost("/games", CreateAdHocGame); 
+        group.MapPost("/games", CreateAdHocGame);
         group.MapPost("/games/create-from-template", CreateGameFromTemplate);
         group.MapGet("/games", GetGames);
         group.MapGet("/games/{roomId}", GetGameState);
@@ -34,12 +33,17 @@ public static class AdminEndpoints
     private static async Task<IResult> GetTemplates(GameDbContext db)
     {
         var templates = await db.RoomTemplates.AsNoTracking().ToListAsync();
-        return Results.Ok(templates.Select(t => new GameTemplateDto(t.Id, t.Name, t.GameType, t.MaxPlayers, t.EntryFee, t.ConfigJson)));
+        return Results.Ok(templates.Select(t =>
+            new GameTemplateDto(t.Id, t.Name, t.GameType, t.MaxPlayers, t.EntryFee, t.ConfigJson)));
     }
 
     private static async Task<IResult> CreateTemplate([FromBody] CreateTemplateRequest req, GameDbContext db)
     {
-        var template = new GameRoomTemplate { Name = req.Name, GameType = req.GameType, MaxPlayers = req.MaxPlayers, EntryFee = req.EntryFee, ConfigJson = req.ConfigJson };
+        var template = new GameRoomTemplate
+        {
+            Name = req.Name, GameType = req.GameType, MaxPlayers = req.MaxPlayers, EntryFee = req.EntryFee,
+            ConfigJson = req.ConfigJson
+        };
         db.RoomTemplates.Add(template);
         await db.SaveChangesAsync();
         return Results.Ok(template.Id);
@@ -59,26 +63,27 @@ public static class AdminEndpoints
         var template = await db.RoomTemplates.FindAsync(req.TemplateId);
         if (template == null) return Results.NotFound("Template not found");
 
-        return await CreateGameInternal(sp, template.GameType, template.MaxPlayers, template.EntryFee, template.ConfigJson);
+        return await CreateGameInternal(sp, template.GameType, template.MaxPlayers, template.EntryFee,
+            template.ConfigJson);
     }
 
     private static async Task<IResult> CreateAdHocGame(
         [FromBody] CreateGameRequest req,
         IServiceProvider sp)
     {
-        return await CreateGameInternal(sp, req.GameType, req.PlayerCount, req.EntryFee, req.ConfigJson); 
+        return await CreateGameInternal(sp, req.GameType, req.PlayerCount, req.EntryFee, req.ConfigJson);
     }
 
     private static async Task<IResult> CreateGameInternal(
-        IServiceProvider sp, 
-        string gameType, 
-        int maxPlayers, 
-        long entryFee, 
+        IServiceProvider sp,
+        string gameType,
+        int maxPlayers,
+        long entryFee,
         string? configJson)
     {
         if (string.IsNullOrWhiteSpace(gameType))
             return Results.BadRequest("Game type is required");
-        
+
         if (maxPlayers < 1 || maxPlayers > 100)
             return Results.BadRequest("Max players must be between 1 and 100");
 
@@ -88,21 +93,18 @@ public static class AdminEndpoints
         var logger = sp.GetRequiredService<ILogger<IGameRoomService>>();
         var configDict = new Dictionary<string, string>();
         if (!string.IsNullOrEmpty(configJson))
-        {
-            try 
+            try
             {
                 var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(configJson);
                 if (dict != null)
-                {
-                    foreach(var kvp in dict) configDict[kvp.Key] = kvp.Value?.ToString() ?? "";
-                }
-            } 
+                    foreach (var kvp in dict)
+                        configDict[kvp.Key] = kvp.Value?.ToString() ?? "";
+            }
             catch (JsonException ex)
             {
                 logger.LogWarning(ex, "Invalid JSON config provided for game type {GameType}", gameType);
                 return Results.BadRequest("Invalid configuration JSON format");
             }
-        }
 
         var metaConfig = new GameRoomMeta
         {
@@ -137,22 +139,20 @@ public static class AdminEndpoints
     }
 
     private static async Task<IResult> GetGames(
-        IEnumerable<IGameModule> modules, 
-        IServiceProvider sp, 
-        IRoomRegistry registry, 
-        [FromQuery] string? gameType = null, 
-        [FromQuery] int page = 1, 
+        IEnumerable<IGameModule> modules,
+        IServiceProvider sp,
+        IRoomRegistry registry,
+        [FromQuery] string? gameType = null,
+        [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50)
     {
         if (pageSize > 100) pageSize = 100;
         if (page < 1) page = 1;
-        
+
         var allGames = new List<GameRoomDto>();
-        
-        // If gameType is provided, we query just that index.
-        // If not, we iterate modules (still better than scanning all keys).
-        var modulesToQuery = string.IsNullOrEmpty(gameType) 
-            ? modules 
+
+        var modulesToQuery = string.IsNullOrEmpty(gameType)
+            ? modules
             : modules.Where(m => m.GameName.Equals(gameType, StringComparison.OrdinalIgnoreCase));
 
         foreach (var module in modulesToQuery)
@@ -160,16 +160,10 @@ public static class AdminEndpoints
             var engine = sp.GetKeyedService<IGameEngine>(module.GameName);
             if (engine == null) continue;
 
-            // Use the new Sorted Set pagination
-            // Note: Cross-module pagination is complex. 
-            // For simplicity in this "fix", we fetch per module. 
-            // In a real $1M project, we'd have a unified "AllGames" index.
-            
             var cursor = (long)(page - 1) * pageSize;
             var (roomIds, _) = await registry.GetRoomIdsPagedAsync(module.GameName, cursor, pageSize);
 
-            // Parallel fetch of states for the page (Much faster than serial await)
-            var tasks = roomIds.Select(async roomId => 
+            var tasks = roomIds.Select(async roomId =>
             {
                 var state = await engine.GetStateAsync(roomId);
                 return state;
@@ -178,26 +172,23 @@ public static class AdminEndpoints
             var states = await Task.WhenAll(tasks);
 
             foreach (var state in states)
-            {
-                if (state != null) 
-                {
+                if (state != null)
                     allGames.Add(new GameRoomDto(
-                        state.RoomId, 
-                        state.GameType, 
-                        state.Meta.CurrentPlayerCount, 
-                        state.Meta.MaxPlayers, 
-                        state.Meta.IsPublic, 
+                        state.RoomId,
+                        state.GameType,
+                        state.Meta.CurrentPlayerCount,
+                        state.Meta.MaxPlayers,
+                        state.Meta.IsPublic,
                         state.Meta.PlayerSeats));
-                }
-            }
-            
+
             if (allGames.Count >= pageSize) break;
         }
-        
+
         return Results.Ok(allGames);
     }
 
-    private static async Task<IResult> GetPlayers(GameDbContext db, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    private static async Task<IResult> GetPlayers(GameDbContext db, [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
     {
         var players = await db.PlayerProfiles
             .AsNoTracking()
@@ -206,41 +197,45 @@ public static class AdminEndpoints
             .OrderBy(p => p.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(p => new AdminPlayerDto(p.Id, p.UserId, p.User.UserName ?? "Unknown", p.User.Email ?? "No Email", p.Coins))
+            .Select(p =>
+                new AdminPlayerDto(p.Id, p.UserId, p.User.UserName ?? "Unknown", p.User.Email ?? "No Email", p.Coins))
             .ToListAsync();
         return Results.Ok(players);
     }
 
-    private static async Task<IResult> UpdatePlayerCoins(string userId, [FromBody] UpdateCoinRequest req, GameDbContext db, IGameEventPublisher publisher)
+    private static async Task<IResult> UpdatePlayerCoins(string userId, [FromBody] UpdateCoinRequest req,
+        GameDbContext db, IGameEventPublisher publisher)
     {
-        var rows = await db.PlayerProfiles.Where(p => p.UserId == userId).ExecuteUpdateAsync(setters => setters.SetProperty(p => p.Coins, p => p.Coins + req.Amount).SetProperty(p => p.Version, Guid.NewGuid()));
+        var rows = await db.PlayerProfiles.Where(p => p.UserId == userId).ExecuteUpdateAsync(setters =>
+            setters.SetProperty(p => p.Coins, p => p.Coins + req.Amount).SetProperty(p => p.Version, Guid.NewGuid()));
         if (rows == 0) return Results.NotFound();
         var profile = await db.PlayerProfiles.Include(p => p.User).AsNoTracking().FirstAsync(p => p.UserId == userId);
-        await publisher.PublishPlayerUpdatedAsync(new PlayerUpdatedMessage(profile.UserId, profile.Coins, profile.User?.UserName, profile.User?.Email));
+        await publisher.PublishPlayerUpdatedAsync(new PlayerUpdatedMessage(profile.UserId, profile.Coins,
+            profile.User?.UserName, profile.User?.Email));
         return Results.Ok(new { NewBalance = profile.Coins });
     }
 
-    private static async Task<IResult> DeletePlayer(string userId, UserManager<ApplicationUser> userManager, GameDbContext db, IGameEventPublisher publisher)
+    private static async Task<IResult> DeletePlayer(string userId, UserManager<ApplicationUser> userManager,
+        GameDbContext db, IGameEventPublisher publisher)
     {
         var user = await userManager.FindByIdAsync(userId);
         if (user == null) return Results.NotFound();
-        
-        // Soft delete: Mark as deleted instead of hard delete
+
         var rows = await db.PlayerProfiles
             .Where(p => p.UserId == userId && !p.IsDeleted)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(p => p.IsDeleted, true)
                 .SetProperty(p => p.DeletedAt, DateTimeOffset.UtcNow));
-        
+
         if (rows == 0)
         {
-            // Profile already deleted or doesn't exist, proceed with user deletion
         }
-        
+
         var result = await userManager.DeleteAsync(user);
         if (!result.Succeeded) return Results.BadRequest(result.Errors);
-        
-        await publisher.PublishPlayerUpdatedAsync(new PlayerUpdatedMessage(userId, 0, user.UserName, user.Email, PlayerChangeType.Deleted));
+
+        await publisher.PublishPlayerUpdatedAsync(new PlayerUpdatedMessage(userId, 0, user.UserName, user.Email,
+            PlayerChangeType.Deleted));
         return Results.Ok();
     }
 

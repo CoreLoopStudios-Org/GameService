@@ -4,12 +4,11 @@ using Microsoft.Extensions.Logging;
 
 namespace GameService.LuckyMine;
 
-
 public sealed class LuckyMineRoomService(
     IGameRepositoryFactory repoFactory,
     ILogger<LuckyMineRoomService> logger) : IGameRoomService
 {
-    private readonly IGameRepository<LuckyMineState> _repository 
+    private readonly IGameRepository<LuckyMineState> _repository
         = repoFactory.Create<LuckyMineState>("LuckyMine");
 
     public string GameType => "LuckyMine";
@@ -18,10 +17,11 @@ public sealed class LuckyMineRoomService(
     {
         var roomId = GenerateShortId();
 
-        int totalTiles = 100;
-        int mineCount = 20;
+        var totalTiles = 100;
+        var mineCount = 20;
 
-        if (meta.Config.TryGetValue("TotalTiles", out var tilesStr) && int.TryParse(tilesStr, out var t)) totalTiles = t;
+        if (meta.Config.TryGetValue("TotalTiles", out var tilesStr) && int.TryParse(tilesStr, out var t))
+            totalTiles = t;
         if (meta.Config.TryGetValue("TotalMines", out var minesStr) && int.TryParse(minesStr, out var m)) mineCount = m;
 
         if (totalTiles > 128) totalTiles = 128;
@@ -45,36 +45,10 @@ public sealed class LuckyMineRoomService(
         return roomId;
     }
 
-    private string GenerateShortId()
+    public async Task DeleteRoomAsync(string roomId)
     {
-        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-        return string.Create(5, chars, (span, charset) => 
-        {
-            for(int i=0; i<span.Length; i++) span[i] = charset[RandomNumberGenerator.GetInt32(charset.Length)];
-        });
+        await _repository.DeleteAsync(roomId);
     }
-
-    /// <summary>
-    /// Clever algorithm for populating N bits in a range.
-    /// Uses Fisher-Yates on a virtual index array.
-    /// </summary>
-    private void PopulateMines(ref LuckyMineState state, int totalTiles, int mineCount)
-    {
-        Span<int> indices = stackalloc int[totalTiles];
-        for (int i = 0; i < totalTiles; i++) indices[i] = i;
-
-        for (int i = 0; i < mineCount; i++)
-        {
-            int j = RandomNumberGenerator.GetInt32(i, totalTiles);
-            (indices[i], indices[j]) = (indices[j], indices[i]);
-
-            int mineIdx = indices[i];
-            if (mineIdx < 64) state.MineMask0 |= (1UL << mineIdx);
-            else state.MineMask1 |= (1UL << (mineIdx - 64));
-        }
-    }
-
-    public async Task DeleteRoomAsync(string roomId) => await _repository.DeleteAsync(roomId);
 
     public async Task<JoinRoomResult> JoinRoomAsync(string roomId, string userId)
     {
@@ -84,9 +58,9 @@ public sealed class LuckyMineRoomService(
         if (ctx.Meta.PlayerSeats.TryGetValue(userId, out var seat)) return JoinRoomResult.Ok(seat);
         if (ctx.Meta.PlayerSeats.Count >= ctx.Meta.MaxPlayers) return JoinRoomResult.Error("Room full");
 
-        int newSeat = ctx.Meta.PlayerSeats.Count;
+        var newSeat = ctx.Meta.PlayerSeats.Count;
         var newSeats = new Dictionary<string, int>(ctx.Meta.PlayerSeats) { [userId] = newSeat };
-        
+
         await _repository.SaveAsync(roomId, ctx.State, ctx.Meta with { PlayerSeats = newSeats });
         return JoinRoomResult.Ok(newSeat);
     }
@@ -106,5 +80,34 @@ public sealed class LuckyMineRoomService(
     {
         var ctx = await _repository.LoadAsync(roomId);
         return ctx?.Meta;
+    }
+
+    private string GenerateShortId()
+    {
+        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        return string.Create(5, chars, (span, charset) =>
+        {
+            for (var i = 0; i < span.Length; i++) span[i] = charset[RandomNumberGenerator.GetInt32(charset.Length)];
+        });
+    }
+
+    /// <summary>
+    ///     Clever algorithm for populating N bits in a range.
+    ///     Uses Fisher-Yates on a virtual index array.
+    /// </summary>
+    private void PopulateMines(ref LuckyMineState state, int totalTiles, int mineCount)
+    {
+        Span<int> indices = stackalloc int[totalTiles];
+        for (var i = 0; i < totalTiles; i++) indices[i] = i;
+
+        for (var i = 0; i < mineCount; i++)
+        {
+            var j = RandomNumberGenerator.GetInt32(i, totalTiles);
+            (indices[i], indices[j]) = (indices[j], indices[i]);
+
+            var mineIdx = indices[i];
+            if (mineIdx < 64) state.MineMask0 |= 1UL << mineIdx;
+            else state.MineMask1 |= 1UL << (mineIdx - 64);
+        }
     }
 }

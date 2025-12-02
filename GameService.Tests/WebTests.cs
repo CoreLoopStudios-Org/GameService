@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.DependencyInjection;
+using Projects;
 
 namespace GameService.Tests;
 
@@ -12,8 +12,8 @@ public class WebTests
     {
         var cancellationToken = TestContext.CurrentContext.CancellationToken;
 
-        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.GameService_AppHost>(cancellationToken);
-        
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<GameService_AppHost>(cancellationToken);
+
         appHost.Services.AddLogging(logging =>
         {
             logging.SetMinimumLevel(LogLevel.Debug);
@@ -26,7 +26,8 @@ public class WebTests
             clientBuilder.AddStandardResilienceHandler();
             clientBuilder.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
             {
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                ServerCertificateCustomValidationCallback =
+                    HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
             });
         });
 
@@ -34,7 +35,8 @@ public class WebTests
         await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
 
         var httpClient = app.CreateHttpClient("webfrontend");
-        await app.ResourceNotifications.WaitForResourceHealthyAsync("webfrontend", cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("webfrontend", cancellationToken)
+            .WaitAsync(DefaultTimeout, cancellationToken);
         var response = await httpClient.GetAsync("/", cancellationToken);
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));

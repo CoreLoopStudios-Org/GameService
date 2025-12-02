@@ -1,8 +1,8 @@
 using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.Security;
 using GameService.Web;
-using GameService.Web.Services;
 using GameService.Web.Components;
+using GameService.Web.Services;
 using GameService.Web.Workers;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -16,18 +16,18 @@ builder.AddRedisClient("cache");
 builder.Services.AddSingleton<PlayerUpdateNotifier>();
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<SoundService>();
-builder.Services.AddHttpClient<GameAdminService>((sp, client) => 
+builder.Services.AddHttpClient<GameAdminService>((sp, client) =>
 {
-    client.BaseAddress = new("http://apiservice");
+    client.BaseAddress = new Uri("http://apiservice");
     var config = sp.GetRequiredService<IConfiguration>();
     var apiKey = config["AdminSettings:ApiKey"] ?? "SecretAdminKey123!";
     client.DefaultRequestHeaders.Add("X-Admin-Key", apiKey);
 });
 builder.Services.AddHostedService<RedisLogStreamer>();
 
-builder.AddNpgsqlDbContext<GameDbContext>("postgresdb", configureDbContextOptions: options => 
+builder.AddNpgsqlDbContext<GameDbContext>("postgresdb", configureDbContextOptions: options =>
 {
-    if (builder.Environment.IsDevelopment()) 
+    if (builder.Environment.IsDevelopment())
         options.EnableSensitiveDataLogging();
 });
 
@@ -45,7 +45,7 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
-builder.Services.AddIdentityCore<ApplicationUser>(options => 
+builder.Services.AddIdentityCore<ApplicationUser>(options =>
     {
         options.SignIn.RequireConfirmedAccount = false;
         options.Password.RequireNonAlphanumeric = false;
@@ -65,7 +65,7 @@ var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
+    app.UseExceptionHandler("/Error", true);
     app.UseHsts();
 }
 else

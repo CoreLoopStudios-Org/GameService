@@ -1,9 +1,9 @@
 @page "/templates"
+@using GameService.ServiceDefaults.DTOs
 @attribute [Authorize]
 @rendermode InteractiveServer
 @inject GameAdminService AdminService
 @inject NavigationManager Nav
-@using GameService.ServiceDefaults.DTOs
 
 <PageTitle>Room Templates</PageTitle>
 
@@ -33,8 +33,10 @@ else
                         <ul class="list-unstyled small mb-3">
                             <li><i class="bi bi-people me-2"></i>Max Players: @t.MaxPlayers</li>
                             <li><i class="bi bi-coin me-2"></i>Entry Fee: @t.EntryFee</li>
-                            @if (!string.IsNullOrEmpty(t.ConfigJson)) {
-                                <li class="text-truncate" title="@t.ConfigJson"><i class="bi bi-gear me-2"></i>Config: @t.ConfigJson</li>
+                            @if (!string.IsNullOrEmpty(t.ConfigJson))
+                            {
+                                <li class="text-truncate" title="@t.ConfigJson"><i
+                                        class="bi bi-gear me-2"></i>Config: @t.ConfigJson</li>
                             }
                         </ul>
                         <div class="d-flex gap-2">
@@ -65,7 +67,7 @@ else
                     <EditForm Model="newTemplate" OnSubmit="CreateTemplate">
                         <div class="mb-3">
                             <label>Name</label>
-                            <InputText @bind-Value="newTemplate.Name" class="form-control" />
+                            <InputText @bind-Value="newTemplate.Name" class="form-control"/>
                         </div>
                         <div class="mb-3">
                             <label>Game Type</label>
@@ -77,16 +79,17 @@ else
                         <div class="row g-2 mb-3">
                             <div class="col">
                                 <label>Max Players</label>
-                                <InputNumber @bind-Value="newTemplate.MaxPlayers" class="form-control" />
+                                <InputNumber @bind-Value="newTemplate.MaxPlayers" class="form-control"/>
                             </div>
                             <div class="col">
                                 <label>Entry Fee</label>
-                                <InputNumber @bind-Value="newTemplate.EntryFee" class="form-control" />
+                                <InputNumber @bind-Value="newTemplate.EntryFee" class="form-control"/>
                             </div>
                         </div>
                         <div class="mb-3">
                             <label>Config JSON (Optional)</label>
-                            <InputTextArea @bind-Value="newTemplate.ConfigJson" class="form-control" placeholder='{"TotalMines": 20}' />
+                            <InputTextArea @bind-Value="newTemplate.ConfigJson" class="form-control"
+                                           placeholder='{"TotalMines": 20}'/>
                         </div>
                         <button type="submit" class="btn btn-primary w-100">Create</button>
                     </EditForm>
@@ -101,15 +104,21 @@ else
     private bool showModal;
     private CreateTemplateRequest newTemplate = new() { Name = "", GameType = "Ludo", MaxPlayers = 4, EntryFee = 100 };
 
-    protected override async Task OnInitializedAsync() => await Load();
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+    }
 
-    private async Task Load() => templates = await AdminService.GetTemplatesAsync();
+    private async Task Load()
+    {
+        templates = await AdminService.GetTemplatesAsync();
+    }
 
     private async Task CreateTemplate()
     {
         await AdminService.CreateTemplateAsync(newTemplate);
         showModal = false;
-        newTemplate = new() { Name = "", GameType = "Ludo", MaxPlayers = 4, EntryFee = 100 };
+        newTemplate = new CreateTemplateRequest { Name = "", GameType = "Ludo", MaxPlayers = 4, EntryFee = 100 };
         await Load();
     }
 
@@ -127,4 +136,5 @@ else
             Nav.NavigateTo($"games/{roomId}");
         }
     }
+
 }

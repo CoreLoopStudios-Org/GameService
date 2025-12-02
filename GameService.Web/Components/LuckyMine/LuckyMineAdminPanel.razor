@@ -1,6 +1,4 @@
-@using Microsoft.AspNetCore.Components
 @using GameService.LuckyMine
-
 <div class="card shadow-sm">
     <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-grid-3x3 me-2"></i>Lucky Mine God Mode</h5>
@@ -11,34 +9,40 @@
     </div>
     <div class="card-body bg-light">
         <div class="d-flex flex-wrap gap-1 justify-content-center" style="max-width: 800px; margin: 0 auto;">
-            @for (int i = 0; i < Dto?.TotalTiles; i++)
+            @for (var i = 0; i < Dto?.TotalTiles; i++)
             {
-            var idx = i;
-            bool isRevealed = IsRevealed(idx);
-            bool isMine = IsMine(idx);
+                var idx = i;
+                var isRevealed = IsRevealed(idx);
+                var isMine = IsMine(idx);
 
-            string bgClass = isRevealed
-            ? (isMine ? "bg-danger text-white border-danger" : "bg-success-subtle text-success border-success")
-            : "bg-white border-secondary-subtle";
+                var bgClass = isRevealed
+                    ? isMine ? "bg-danger text-white border-danger" : "bg-success-subtle text-success border-success"
+                    : "bg-white border-secondary-subtle";
 
-            <div class="tile @bgClass shadow-sm" title="Index @idx @(isMine ? "[MINE]" : "")">
-                @if (isRevealed)
-                {
-                if (isMine) { <i class="bi bi-radioactive fs-5"></i> }
-                else { <span class="fw-bold">@CalculateMultiplier(idx)x</span> }
-                }
-                else
-                {
-                if (isMine)
-                {
-                    <i class="bi bi-bomb-fill text-danger opacity-50"></i>
-                }
-                else
-                {
-                <span class="small text-muted opacity-25">@idx</span>
-                }
-                }
-            </div>
+                <div class="tile @bgClass shadow-sm" title="Index @idx @(isMine ? "[MINE]" : "")">
+                    @if (isRevealed)
+                    {
+                        if (isMine)
+                        {
+                            <i class="bi bi-radioactive fs-5"></i>
+                        }
+                        else
+                        {
+                            <span class="fw-bold">@CalculateMultiplier(idx)x</span>
+                        }
+                    }
+                    else
+                    {
+                        if (isMine)
+                        {
+                            <i class="bi bi-bomb-fill text-danger opacity-50"></i>
+                        }
+                        else
+                        {
+                            <span class="small text-muted opacity-25">@idx</span>
+                        }
+                    }
+                </div>
             }
         </div>
     </div>
@@ -59,21 +63,25 @@
 </style>
 
 @code {
-[Parameter] public LuckyMineFullDto? Dto { get; set; }
+    [Parameter] public LuckyMineFullDto? Dto { get; set; }
 
-private bool IsRevealed(int index)
-{
-if (Dto == null) return false;
-if (index < 64) return (Dto.RevealedMask0 & (1UL << index)) != 0;
-return (Dto.RevealedMask1 & (1UL << (index - 64))) != 0;
-}
+    private bool IsRevealed(int index)
+    {
+        if (Dto == null) return false;
+        if (index < 64) return (Dto.RevealedMask0 & (1UL << index)) != 0;
+        return (Dto.RevealedMask1 & (1UL << (index - 64))) != 0;
+    }
 
-private bool IsMine(int index)
-{
-if (Dto == null) return false;
-if (index < 64) return (Dto.MineMask0 & (1UL << index)) != 0;
-return (Dto.MineMask1 & (1UL << (index - 64))) != 0;
-}
+    private bool IsMine(int index)
+    {
+        if (Dto == null) return false;
+        if (index < 64) return (Dto.MineMask0 & (1UL << index)) != 0;
+        return (Dto.MineMask1 & (1UL << (index - 64))) != 0;
+    }
 
-private string CalculateMultiplier(int idx) => "1.5";
+    private string CalculateMultiplier(int idx)
+    {
+        return "1.5";
+    }
+
 }

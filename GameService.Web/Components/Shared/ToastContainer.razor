@@ -4,13 +4,15 @@
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1100">
     @foreach (var toast in toasts)
     {
-        <div class="toast show align-items-center text-white bg-@GetBgClass(toast.Level) border-0 mb-2 animate-slide-in" role="alert">
+        <div class="toast show align-items-center text-white bg-@GetBgClass(toast.Level) border-0 mb-2 animate-slide-in"
+             role="alert">
             <div class="d-flex">
                 <div class="toast-body">
                     <i class="@GetIcon(toast.Level) me-2"></i>
                     <strong>@toast.Title:</strong> @toast.Message
                 </div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" @onclick="() => Remove(toast)"></button>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                        @onclick="() => Remove(toast)"></button>
             </div>
         </div>
     }
@@ -20,7 +22,7 @@
     .animate-slide-in {
         animation: slideIn 0.3s ease-out;
     }
-    
+
     @@keyframes slideIn {
         from {
             transform: translateX(100%);
@@ -34,7 +36,7 @@
 </style>
 
 @code {
-    private List<ToastMessage> toasts = new();
+    private readonly List<ToastMessage> toasts = new();
 
     protected override void OnInitialized()
     {
@@ -46,47 +48,50 @@
         var toast = new ToastMessage { Title = title, Message = message, Level = level };
         toasts.Add(toast);
         StateHasChanged();
-        
-        // Auto-dismiss after 4 seconds
-        _ = Task.Delay(4000).ContinueWith(_ => 
-        {
-            InvokeAsync(() => Remove(toast));
-        });
+
+        _ = Task.Delay(4000).ContinueWith(_ => { InvokeAsync(() => Remove(toast)); });
     }
 
-    private void Remove(ToastMessage toast) 
-    { 
-        toasts.Remove(toast); 
-        StateHasChanged(); 
+    private void Remove(ToastMessage toast)
+    {
+        toasts.Remove(toast);
+        StateHasChanged();
     }
-    
-    public void Dispose() 
+
+    public void Dispose()
     {
         ToastService.OnShow -= ShowToast;
     }
 
-    private string GetBgClass(ToastLevel level) => level switch
+    private string GetBgClass(ToastLevel level)
     {
-        ToastLevel.Success => "success",
-        ToastLevel.Error => "danger",
-        ToastLevel.Warning => "warning",
-        ToastLevel.Info => "info",
-        _ => "secondary"
-    };
+        return level switch
+        {
+            ToastLevel.Success => "success",
+            ToastLevel.Error => "danger",
+            ToastLevel.Warning => "warning",
+            ToastLevel.Info => "info",
+            _ => "secondary"
+        };
+    }
 
-    private string GetIcon(ToastLevel level) => level switch
+    private string GetIcon(ToastLevel level)
     {
-        ToastLevel.Success => "bi bi-check-circle-fill",
-        ToastLevel.Error => "bi bi-exclamation-octagon-fill",
-        ToastLevel.Warning => "bi bi-exclamation-triangle-fill",
-        ToastLevel.Info => "bi bi-info-circle-fill",
-        _ => "bi bi-bell-fill"
-    };
+        return level switch
+        {
+            ToastLevel.Success => "bi bi-check-circle-fill",
+            ToastLevel.Error => "bi bi-exclamation-octagon-fill",
+            ToastLevel.Warning => "bi bi-exclamation-triangle-fill",
+            ToastLevel.Info => "bi bi-info-circle-fill",
+            _ => "bi bi-bell-fill"
+        };
+    }
 
-    private class ToastMessage 
-    { 
+    private class ToastMessage
+    {
         public string Title { get; set; } = "";
         public string Message { get; set; } = "";
         public ToastLevel Level { get; set; }
     }
+
 }

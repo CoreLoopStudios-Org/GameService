@@ -39,7 +39,6 @@ namespace GameService.ApiService;
 [JsonSerializable(typeof(PlayerReconnectedEvent))]
 [JsonSerializable(typeof(ChatMessageEvent))]
 [JsonSerializable(typeof(Dictionary<string, int>))]
-
 [JsonSerializable(typeof(GameTemplateDto))]
 [JsonSerializable(typeof(List<GameTemplateDto>))]
 [JsonSerializable(typeof(CreateTemplateRequest))]
@@ -47,7 +46,6 @@ namespace GameService.ApiService;
 [JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(Dictionary<string, object>))]
 [JsonSerializable(typeof(Dictionary<string, DateTimeOffset>))]
-
 [JsonSerializable(typeof(WalletTransactionDto))]
 [JsonSerializable(typeof(List<WalletTransactionDto>))]
 internal partial class GameJsonContext : JsonSerializerContext

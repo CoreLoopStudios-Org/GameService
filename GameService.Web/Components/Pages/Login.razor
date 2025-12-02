@@ -1,5 +1,4 @@
 @page "/Account/Login"
-
 @using System.ComponentModel.DataAnnotations
 @using GameService.ServiceDefaults.Data
 @using Microsoft.AspNetCore.Identity
@@ -18,22 +17,24 @@
             @if (Input is not null)
             {
                 <EditForm Model="Input" method="post" OnValidSubmit="LoginUser" FormName="login">
-                    <DataAnnotationsValidator />
+                    <DataAnnotationsValidator/>
                     <h2>Use a local account to log in.</h2>
-                    <hr />
+                    <hr/>
                     <div class="text-danger">@errorMessage</div>
-                    
+
                     <div class="form-floating mb-3">
-                        <InputText @bind-Value="Input.Email" class="form-control" autocomplete="username" aria-required="true" placeholder="name@example.com" />
+                        <InputText @bind-Value="Input.Email" class="form-control" autocomplete="username"
+                                   aria-required="true" placeholder="name@example.com"/>
                         <label for="email">Email</label>
-                        <ValidationMessage For="() => Input.Email" class="text-danger" />
+                        <ValidationMessage For="() => Input.Email" class="text-danger"/>
                     </div>
                     <div class="form-floating mb-3">
-                        <InputText @bind-Value="Input.Password" type="password" class="form-control" autocomplete="current-password" aria-required="true" placeholder="password" />
+                        <InputText @bind-Value="Input.Password" type="password" class="form-control"
+                                   autocomplete="current-password" aria-required="true" placeholder="password"/>
                         <label for="password">Password</label>
-                        <ValidationMessage For="() => Input.Password" class="text-danger" />
+                        <ValidationMessage For="() => Input.Password" class="text-danger"/>
                     </div>
-                    
+
                     <div>
                         <button type="submit" class="w-100 btn btn-lg btn-primary">Log in</button>
                     </div>
@@ -44,11 +45,9 @@
 </div>
 
 @code {
-    [SupplyParameterFromForm]
-    private InputModel? Input { get; set; }
+    [SupplyParameterFromForm] private InputModel? Input { get; set; }
 
-    [SupplyParameterFromQuery]
-    private string? ReturnUrl { get; set; }
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
 
     private string? errorMessage;
 
@@ -60,11 +59,11 @@
     public async Task LoginUser()
     {
         if (Input is null) return;
-        
-        var result = await SignInManager.PasswordSignInAsync(Input.Email, Input.Password, false, lockoutOnFailure: false);
+
+        var result = await SignInManager.PasswordSignInAsync(Input.Email, Input.Password, false, false);
         if (result.Succeeded)
         {
-            NavigationManager.NavigateTo(ReturnUrl ?? "/", forceLoad: true);
+            NavigationManager.NavigateTo(ReturnUrl ?? "/", true);
         }
         else
         {
@@ -74,12 +73,11 @@
 
     public class InputModel
     {
-        [Required]
-        [EmailAddress]
-        public string Email { get; set; } = "";
+        [Required] [EmailAddress] public string Email { get; set; } = "";
 
         [Required]
         [DataType(DataType.Password)]
         public string Password { get; set; } = "";
     }
+
 }

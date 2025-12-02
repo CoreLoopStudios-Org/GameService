@@ -23,16 +23,14 @@ public class IdentityRevalidatingAuthenticationStateProvider(
         return await ValidateSecurityStampAsync(userManager, authenticationState.User);
     }
 
-    private async Task<bool> ValidateSecurityStampAsync(UserManager<ApplicationUser> userManager, ClaimsPrincipal principal)
+    private async Task<bool> ValidateSecurityStampAsync(UserManager<ApplicationUser> userManager,
+        ClaimsPrincipal principal)
     {
         var user = await userManager.GetUserAsync(principal);
         if (user is null) return false;
-        else if (!userManager.SupportsUserSecurityStamp) return true;
-        else
-        {
-            var principalStamp = principal.FindFirstValue(options.Value.ClaimsIdentity.SecurityStampClaimType);
-            var userStamp = await userManager.GetSecurityStampAsync(user);
-            return principalStamp == userStamp;
-        }
+        if (!userManager.SupportsUserSecurityStamp) return true;
+        var principalStamp = principal.FindFirstValue(options.Value.ClaimsIdentity.SecurityStampClaimType);
+        var userStamp = await userManager.GetSecurityStampAsync(user);
+        return principalStamp == userStamp;
     }
 }

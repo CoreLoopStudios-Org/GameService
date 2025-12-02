@@ -18,14 +18,8 @@ public class HubGameBroadcaster(IHubContext<GameHub> hubContext) : IGameBroadcas
 
     public async Task BroadcastResultAsync(string roomId, GameActionResult result)
     {
-        if (result.ShouldBroadcast && result.NewState != null)
-        {
-            await BroadcastStateAsync(roomId, result.NewState);
-        }
+        if (result.ShouldBroadcast && result.NewState != null) await BroadcastStateAsync(roomId, result.NewState);
 
-        foreach (var evt in result.Events)
-        {
-            await BroadcastEventAsync(roomId, evt);
-        }
+        foreach (var evt in result.Events) await BroadcastEventAsync(roomId, evt);
     }
 }

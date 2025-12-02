@@ -1,5 +1,4 @@
 using GameService.ServiceDefaults.Data;
-using Microsoft.AspNetCore.Routing;
 
 namespace GameService.ApiService.Features.Auth;
 

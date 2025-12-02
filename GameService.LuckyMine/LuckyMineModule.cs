@@ -23,12 +23,12 @@ public sealed class LuckyMineModule : IGameModule
         var group = endpoints.MapGroup("/admin/luckymine").RequireAuthorization("AdminPolicy");
 
         group.MapGet("/{roomId}/state", async (
-            string roomId, 
+            string roomId,
             IGameRepositoryFactory repoFactory) =>
         {
             var repo = repoFactory.Create<LuckyMineState>(GameName);
             var ctx = await repo.LoadAsync(roomId);
-            
+
             if (ctx == null) return Results.NotFound();
 
             var dto = new LuckyMineFullDto
@@ -44,7 +44,7 @@ public sealed class LuckyMineModule : IGameModule
                 MineMask0 = ctx.State.MineMask0,
                 MineMask1 = ctx.State.MineMask1
             };
-            
+
             return Results.Ok(dto);
         });
     }
@@ -53,4 +53,6 @@ public sealed class LuckyMineModule : IGameModule
 [JsonSerializable(typeof(LuckyMineDto))]
 [JsonSerializable(typeof(LuckyMineFullDto))]
 [JsonSerializable(typeof(LuckyMineState))]
-public partial class LuckyMineJsonContext : JsonSerializerContext { }
+public partial class LuckyMineJsonContext : JsonSerializerContext
+{
+}

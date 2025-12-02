@@ -1,11 +1,10 @@
 using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.DTOs;
-using Microsoft.EntityFrameworkCore;
 
 namespace GameService.Tests;
 
 /// <summary>
-/// Tests for WalletTransaction and related economy features
+///     Tests for WalletTransaction and related economy features
 /// </summary>
 [TestFixture]
 public class EconomyTests
@@ -14,7 +13,7 @@ public class EconomyTests
     public void WalletTransaction_DefaultValues()
     {
         var tx = new WalletTransaction { UserId = "user1" };
-        
+
         Assert.Multiple(() =>
         {
             Assert.That(tx.TransactionType, Is.EqualTo("Unknown"));
@@ -29,7 +28,7 @@ public class EconomyTests
     public void UpdateCoinRequest_SupportsIdempotencyKey()
     {
         var request = new UpdateCoinRequest(100, "unique-key-123", "room-abc");
-        
+
         Assert.Multiple(() =>
         {
             Assert.That(request.Amount, Is.EqualTo(100));
@@ -42,15 +41,15 @@ public class EconomyTests
     public void WalletTransactionDto_MapsCorrectly()
     {
         var dto = new WalletTransactionDto(
-            Id: 1,
-            Amount: 500,
-            BalanceAfter: 1500,
-            TransactionType: "Credit",
-            Description: "Game win",
-            ReferenceId: "ROOM123",
-            CreatedAt: DateTimeOffset.UtcNow
+            1,
+            500,
+            1500,
+            "Credit",
+            "Game win",
+            "ROOM123",
+            DateTimeOffset.UtcNow
         );
-        
+
         Assert.Multiple(() =>
         {
             Assert.That(dto.Id, Is.EqualTo(1));
@@ -64,7 +63,7 @@ public class EconomyTests
     public void PlayerProfile_SoftDelete_DefaultsFalse()
     {
         var profile = new PlayerProfile { UserId = "user1" };
-        
+
         Assert.Multiple(() =>
         {
             Assert.That(profile.IsDeleted, Is.False);
@@ -75,12 +74,12 @@ public class EconomyTests
     [Test]
     public void ArchivedGame_DefaultValues()
     {
-        var archived = new ArchivedGame 
-        { 
+        var archived = new ArchivedGame
+        {
             RoomId = "ABC123",
             GameType = "Ludo"
         };
-        
+
         Assert.Multiple(() =>
         {
             Assert.That(archived.FinalStateJson, Is.EqualTo("{}"));

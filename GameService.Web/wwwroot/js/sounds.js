@@ -4,19 +4,19 @@
  */
 window.GameSounds = {
     audioContext: null,
-    
-    init: function() {
+
+    init: function () {
         if (this.audioContext) return;
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
     },
-    
-    play: function(soundName) {
+
+    play: function (soundName) {
         if (!this.audioContext) this.init();
         if (this.audioContext.state === 'suspended') {
             this.audioContext.resume();
         }
-        
-        switch(soundName) {
+
+        switch (soundName) {
             case 'diceRoll':
                 this._playTone(400, 0.1, 'square');
                 setTimeout(() => this._playTone(500, 0.1, 'square'), 50);
@@ -47,25 +47,25 @@ window.GameSounds = {
                 break;
         }
     },
-    
-    _playTone: function(frequency, duration, type) {
+
+    _playTone: function (frequency, duration, type) {
         const oscillator = this.audioContext.createOscillator();
         const gainNode = this.audioContext.createGain();
-        
+
         oscillator.type = type || 'sine';
         oscillator.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
-        
+
         gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
-        
+
         oscillator.connect(gainNode);
         gainNode.connect(this.audioContext.destination);
-        
+
         oscillator.start(this.audioContext.currentTime);
         oscillator.stop(this.audioContext.currentTime + duration);
     },
-    
-    _playChord: function(frequencies, duration, type) {
+
+    _playChord: function (frequencies, duration, type) {
         frequencies.forEach(freq => this._playTone(freq, duration, type));
     }
 };

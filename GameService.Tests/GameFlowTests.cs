@@ -1,46 +1,48 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using Aspire.Hosting.ApplicationModel;
-using Aspire.Hosting.Testing;
 using GameService.ApiService.Hubs;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.Extensions.DependencyInjection;
+using Projects;
 
 namespace GameService.Tests;
 
 public class GameFlowTests
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(5);
     private const string Password = "Test123!";
+    private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(5);
 
     [Test]
     public async Task Create_And_Join_Room_Integration_Test()
     {
         var cancellationToken = TestContext.CurrentContext.CancellationToken;
 
-        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.GameService_AppHost>(cancellationToken);
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<GameService_AppHost>(cancellationToken);
 
         appHost.Services.ConfigureHttpClientDefaults(clientBuilder =>
         {
             clientBuilder.AddStandardResilienceHandler();
             clientBuilder.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
             {
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                ServerCertificateCustomValidationCallback =
+                    HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
             });
         });
 
         await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(Timeout, cancellationToken);
         await app.StartAsync(cancellationToken).WaitAsync(Timeout, cancellationToken);
 
-        await app.ResourceNotifications.WaitForResourceHealthyAsync("apiservice", cancellationToken).WaitAsync(Timeout, cancellationToken);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("apiservice", cancellationToken)
+            .WaitAsync(Timeout, cancellationToken);
 
         var httpClient = app.CreateHttpClient("apiservice");
         var email = $"test+{Guid.NewGuid():N}@gameservice.local";
 
-        var registerResp = await httpClient.PostAsJsonAsync("/auth/register", new { email, password = Password }, cancellationToken);
+        var registerResp =
+            await httpClient.PostAsJsonAsync("/auth/register", new { email, password = Password }, cancellationToken);
         registerResp.EnsureSuccessStatusCode();
 
-        var loginResp = await httpClient.PostAsJsonAsync("/auth/login", new { email, password = Password }, cancellationToken);
+        var loginResp =
+            await httpClient.PostAsJsonAsync("/auth/login", new { email, password = Password }, cancellationToken);
         loginResp.EnsureSuccessStatusCode();
 
         await using var loginStream = await loginResp.Content.ReadAsStreamAsync(cancellationToken);
@@ -54,12 +56,11 @@ public class GameFlowTests
             .WithUrl(hubUrl, options =>
             {
                 options.AccessTokenProvider = () => Task.FromResult<string?>(accessToken);
-                options.HttpMessageHandlerFactory = (handler) =>
+                options.HttpMessageHandlerFactory = handler =>
                 {
                     if (handler is HttpClientHandler clientHandler)
-                    {
-                        clientHandler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
-                    }
+                        clientHandler.ServerCertificateCustomValidationCallback =
+                            HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
                     return handler;
                 };
             })
