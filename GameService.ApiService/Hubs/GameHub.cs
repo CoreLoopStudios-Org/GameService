@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Claims;
 using System.Text.Json;
+using GameService.ApiService.Features.Economy;
 using GameService.GameCore;
 using GameService.ServiceDefaults.Configuration;
 using GameService.ServiceDefaults.Data;
@@ -24,6 +25,7 @@ public class GameHub(
     ILogger<GameHub> logger) : Hub
 {
     private readonly int _reconnectionGracePeriodSeconds = options.Value.Session.ReconnectionGracePeriodSeconds;
+    private readonly int _maxMessagesPerMinute = options.Value.RateLimit.SignalRMessagesPerMinute;
 
     /// <summary>
     ///     Tracks recently disconnected players for reconnection grace period
@@ -32,8 +34,38 @@ public class GameHub(
     private static readonly ConcurrentDictionary<string, (string RoomId, DateTimeOffset DisconnectTime)>
         DisconnectedPlayers = new();
 
+    /// <summary>
+    ///     Rate limiting: tracks message counts per user per minute
+    ///     Key: UserId, Value: (Count, WindowStart)
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, (int Count, DateTimeOffset WindowStart)>
+        UserMessageCounts = new();
+
     private string UserId => Context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
     private string UserName => Context.User?.Identity?.Name ?? "Unknown";
+
+    private bool CheckRateLimit()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var windowStart = now.AddMinutes(-1);
+
+        var current = UserMessageCounts.AddOrUpdate(
+            UserId,
+            _ => (1, now),
+            (_, existing) =>
+            {
+                if (existing.WindowStart < windowStart)
+                    return (1, now); // Reset window
+                return (existing.Count + 1, existing.WindowStart);
+            });
+
+        if (current.Count > _maxMessagesPerMinute)
+        {
+            logger.LogWarning("Rate limit exceeded for user {UserId}: {Count} messages in window", UserId, current.Count);
+            return false;
+        }
+        return true;
+    }
 
     public override async Task OnConnectedAsync()
     {
@@ -212,6 +244,23 @@ public class GameHub(
         var roomService = serviceProvider.GetKeyedService<IGameRoomService>(gameType);
         if (roomService == null) return new JoinRoomResponse(false, -1, "Game type not supported");
 
+        // Check room meta for entry fee before joining
+        var meta = await roomService.GetRoomMetaAsync(roomId);
+        if (meta == null) return new JoinRoomResponse(false, -1, "Room not found");
+        
+        // Deduct entry fee if required (and player not already in room)
+        if (meta.EntryFee > 0 && !meta.PlayerSeats.ContainsKey(UserId))
+        {
+            using var scope = serviceProvider.CreateScope();
+            var economyService = scope.ServiceProvider.GetRequiredService<IEconomyService>();
+            var feeResult = await economyService.DeductEntryFeeAsync(UserId, meta.EntryFee, roomId);
+            if (!feeResult.Success)
+            {
+                return new JoinRoomResponse(false, -1, feeResult.ErrorMessage ?? "Insufficient funds for entry fee");
+            }
+            logger.LogInformation("Player {UserId} paid entry fee {Fee} for room {RoomId}", UserId, meta.EntryFee, roomId);
+        }
+
         var result = await roomService.JoinRoomAsync(roomId, UserId);
         if (!result.Success) return new JoinRoomResponse(false, -1, result.ErrorMessage);
 
@@ -261,6 +310,10 @@ public class GameHub(
     /// </summary>
     public async Task<GameActionResult> PerformAction(string roomId, string actionName, JsonElement payload)
     {
+        // Rate limit check
+        if (!CheckRateLimit())
+            return GameActionResult.Error("Rate limit exceeded. Please slow down.");
+
         var gameType = await roomRegistry.GetGameTypeAsync(roomId);
         if (gameType == null) return GameActionResult.Error("Room not found");
 

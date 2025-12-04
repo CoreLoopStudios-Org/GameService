@@ -120,6 +120,7 @@ builder.Services.AddGameModule<LudoModule>();
 builder.Services.AddGameModule<LuckyMineModule>();
 
 builder.Services.AddHostedService<GameLoopWorker>();
+builder.Services.AddHostedService<IdempotencyCleanupWorker>();
 
 builder.Services.AddSignalR()
     .AddStackExchangeRedis(builder.Configuration.GetConnectionString("cache") ??
@@ -133,18 +134,44 @@ if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
     app.MapOpenApi();
     await DbInitializer.InitializeAsync(app.Services);
 }
+else
+{
+    // Production: enforce HTTPS if configured
+    if (gameServiceOptions.Security.RequireHttpsInProduction)
+    {
+        app.UseHttpsRedirection();
+        app.UseHsts();
+    }
+}
 
 app.UseCors();
 app.UseRateLimiter();
 
 app.UseAuthentication();
 
+// API Key authentication middleware with enhanced validation
 app.Use(async (context, next) =>
 {
     var apiKey = context.Request.Headers["X-Admin-Key"].FirstOrDefault();
     var configuredKey = context.RequestServices.GetRequiredService<IConfiguration>()["AdminSettings:ApiKey"];
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    var env = context.RequestServices.GetRequiredService<IHostEnvironment>();
+
+    // Warn if API key is not configured in production
+    if (!env.IsDevelopment() && string.IsNullOrEmpty(configuredKey) && 
+        context.Request.Path.StartsWithSegments("/admin"))
+    {
+        logger.LogWarning("Admin API key not configured. Set AdminSettings:ApiKey environment variable.");
+    }
 
     if (!string.IsNullOrEmpty(apiKey) && !string.IsNullOrEmpty(configuredKey))
+    {
+        // Minimum key length validation
+        if (configuredKey.Length < 32)
+        {
+            logger.LogWarning("Admin API key is too short. Use at least 32 characters for security.");
+        }
+
         if (CryptographicOperations.FixedTimeEquals(
                 Encoding.UTF8.GetBytes(apiKey),
                 Encoding.UTF8.GetBytes(configuredKey)))
@@ -158,6 +185,7 @@ app.Use(async (context, next) =>
             var identity = new ClaimsIdentity(claims, "ApiKey");
             context.User = new ClaimsPrincipal(identity);
         }
+    }
 
     await next();
 });

@@ -11,6 +11,16 @@ public interface IEconomyService
 {
     Task<TransactionResult> ProcessTransactionAsync(string userId, long amount, string? referenceId = null,
         string? idempotencyKey = null);
+    
+    /// <summary>
+    /// Deduct entry fee from player when joining a paid game
+    /// </summary>
+    Task<TransactionResult> DeductEntryFeeAsync(string userId, long entryFee, string roomId);
+    
+    /// <summary>
+    /// Award winnings to player(s) when game ends
+    /// </summary>
+    Task<TransactionResult> AwardWinningsAsync(string userId, long amount, string roomId);
 }
 
 public enum TransactionErrorType
@@ -149,5 +159,21 @@ public class EconomyService(
                 return new TransactionResult(false, 0, TransactionErrorType.Unknown, "Transaction failed");
             }
         });
+    }
+
+    public async Task<TransactionResult> DeductEntryFeeAsync(string userId, long entryFee, string roomId)
+    {
+        if (entryFee <= 0) return new TransactionResult(true, 0); // No fee required
+        
+        var idempotencyKey = $"entry:{roomId}:{userId}";
+        return await ProcessTransactionAsync(userId, -entryFee, $"ROOM:{roomId}:ENTRY", idempotencyKey);
+    }
+
+    public async Task<TransactionResult> AwardWinningsAsync(string userId, long amount, string roomId)
+    {
+        if (amount <= 0) return new TransactionResult(true, 0);
+        
+        var idempotencyKey = $"win:{roomId}:{userId}";
+        return await ProcessTransactionAsync(userId, amount, $"ROOM:{roomId}:WIN", idempotencyKey);
     }
 }

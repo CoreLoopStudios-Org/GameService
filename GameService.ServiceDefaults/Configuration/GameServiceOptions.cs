@@ -36,6 +36,11 @@ public class GameServiceOptions
     /// Game loop worker settings
     /// </summary>
     public GameLoopOptions GameLoop { get; set; } = new();
+
+    /// <summary>
+    /// Security settings
+    /// </summary>
+    public SecurityOptions Security { get; set; } = new();
 }
 
 public class EconomyOptions
@@ -44,6 +49,11 @@ public class EconomyOptions
     /// Initial coins given to new players
     /// </summary>
     public long InitialCoins { get; set; } = 100;
+
+    /// <summary>
+    /// Days to keep idempotency keys before cleanup
+    /// </summary>
+    public int IdempotencyKeyRetentionDays { get; set; } = 7;
 }
 
 public class SessionOptions
@@ -57,14 +67,14 @@ public class SessionOptions
 public class AdminSeedOptions
 {
     /// <summary>
-    /// Admin account email for seeding
+    /// Admin account email for seeding (required in production via env var)
     /// </summary>
-    public string Email { get; set; } = "admin@gameservice.com";
+    public string Email { get; set; } = "";
 
     /// <summary>
-    /// Admin account password for seeding
+    /// Admin account password for seeding (required in production via env var)
     /// </summary>
-    public string Password { get; set; } = "AdminPass123!";
+    public string Password { get; set; } = "";
 
     /// <summary>
     /// Initial coins for admin account
@@ -83,6 +93,11 @@ public class RateLimitOptions
     /// Rate limit window in minutes
     /// </summary>
     public int WindowMinutes { get; set; } = 1;
+
+    /// <summary>
+    /// Maximum SignalR messages per minute per user
+    /// </summary>
+    public int SignalRMessagesPerMinute { get; set; } = 60;
 }
 
 public class CorsOptions
@@ -99,4 +114,12 @@ public class GameLoopOptions
     /// Interval in milliseconds between game loop ticks
     /// </summary>
     public int TickIntervalMs { get; set; } = 5000;
+}
+
+public class SecurityOptions
+{
+    /// <summary>
+    /// Require HTTPS in production environment
+    /// </summary>
+    public bool RequireHttpsInProduction { get; set; } = true;
 }
