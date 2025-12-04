@@ -18,15 +18,19 @@ using GameService.GameCore;
 using GameService.LuckyMine;
 using GameService.Ludo;
 using GameService.ServiceDefaults;
+using GameService.ServiceDefaults.Configuration;
 using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.Security;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddNpgsqlDbContext<GameDbContext>("postgresdb");
 builder.AddRedisClient("cache");
+
+builder.Services.Configure<GameServiceOptions>(builder.Configuration.GetSection(GameServiceOptions.SectionName));
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -35,6 +39,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(2, LuckyMineJsonContext.Default);
     options.SerializerOptions.PropertyNameCaseInsensitive = true;
 });
+
+var gameServiceOptions = builder.Configuration.GetSection(GameServiceOptions.SectionName).Get<GameServiceOptions>() ?? new GameServiceOptions();
 
 builder.Services.AddCors(options =>
 {
@@ -45,7 +51,7 @@ builder.Services.AddCors(options =>
                 .AllowAnyHeader()
                 .AllowAnyMethod();
         else
-            policy.WithOrigins("https://yourdomain.com")
+            policy.WithOrigins(gameServiceOptions.Cors.AllowedOrigins)
                 .AllowAnyHeader()
                 .AllowAnyMethod()
                 .AllowCredentials();
@@ -54,16 +60,33 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddRateLimiter(options =>
 {
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
+    {
+        // Skip rate limiting for admin endpoints (they use API key auth)
+        if (httpContext.Request.Path.StartsWithSegments("/admin"))
+        {
+            return RateLimitPartition.GetNoLimiter("admin");
+        }
+        
+        // Skip rate limiting for health checks
+        if (httpContext.Request.Path.StartsWithSegments("/health") || 
+            httpContext.Request.Path.StartsWithSegments("/alive"))
+        {
+            return RateLimitPartition.GetNoLimiter("health");
+        }
+        
+        return RateLimitPartition.GetFixedWindowLimiter(
             httpContext.User.Identity?.Name ?? httpContext.Request.Headers.Host.ToString(),
             _ => new FixedWindowRateLimiterOptions
             {
                 AutoReplenishment = true,
-                PermitLimit = 100,
+                PermitLimit = gameServiceOptions.RateLimit.PermitLimit,
                 QueueLimit = 0,
-                Window = TimeSpan.FromMinutes(1)
-            }));
+                Window = TimeSpan.FromMinutes(gameServiceOptions.RateLimit.WindowMinutes)
+            });
+    });
 });
 
 builder.Services.AddAuthorization(options =>

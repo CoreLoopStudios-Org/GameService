@@ -2,10 +2,12 @@ using System.Collections.Concurrent;
 using System.Security.Claims;
 using System.Text.Json;
 using GameService.GameCore;
+using GameService.ServiceDefaults.Configuration;
 using GameService.ServiceDefaults.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace GameService.ApiService.Hubs;
 
@@ -18,12 +20,13 @@ namespace GameService.ApiService.Hubs;
 public class GameHub(
     IRoomRegistry roomRegistry,
     IServiceProvider serviceProvider,
+    IOptions<GameServiceOptions> options,
     ILogger<GameHub> logger) : Hub
 {
-    private const int ReconnectionGracePeriodSeconds = 15;
+    private readonly int _reconnectionGracePeriodSeconds = options.Value.Session.ReconnectionGracePeriodSeconds;
 
     /// <summary>
-    ///     Tracks recently disconnected players for reconnection grace period (15 seconds)
+    ///     Tracks recently disconnected players for reconnection grace period
     ///     Key: UserId, Value: (RoomId, DisconnectTime)
     /// </summary>
     private static readonly ConcurrentDictionary<string, (string RoomId, DateTimeOffset DisconnectTime)>
@@ -39,7 +42,7 @@ public class GameHub(
         if (DisconnectedPlayers.TryRemove(UserId, out var disconnectInfo))
         {
             var elapsed = DateTimeOffset.UtcNow - disconnectInfo.DisconnectTime;
-            if (elapsed.TotalSeconds < ReconnectionGracePeriodSeconds)
+            if (elapsed.TotalSeconds < _reconnectionGracePeriodSeconds)
             {
                 await Groups.AddToGroupAsync(Context.ConnectionId, disconnectInfo.RoomId);
                 await Clients.Group(disconnectInfo.RoomId)
@@ -71,13 +74,14 @@ public class GameHub(
                 DisconnectedPlayers[UserId] = (roomId, DateTimeOffset.UtcNow);
 
                 await Clients.Group(roomId).SendAsync("PlayerDisconnected",
-                    new PlayerDisconnectedEvent(UserId, UserName, ReconnectionGracePeriodSeconds));
+                    new PlayerDisconnectedEvent(UserId, UserName, _reconnectionGracePeriodSeconds));
 
                 var capturedUserId = UserId;
                 var capturedUserName = UserName;
                 var capturedRoomId = roomId;
                 var capturedGameType = gameType;
-                _ = Task.Delay(TimeSpan.FromSeconds(ReconnectionGracePeriodSeconds + 1)).ContinueWith(async _ =>
+                var gracePeriod = _reconnectionGracePeriodSeconds;
+                _ = Task.Delay(TimeSpan.FromSeconds(gracePeriod + 1)).ContinueWith(async _ =>
                 {
                     if (DisconnectedPlayers.TryRemove(capturedUserId, out var info) && info.RoomId == capturedRoomId)
                     {

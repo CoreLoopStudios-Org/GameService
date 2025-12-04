@@ -1,7 +1,9 @@
 using GameService.ServiceDefaults;
+using GameService.ServiceDefaults.Configuration;
 using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.DTOs;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace GameService.ApiService.Features.Economy;
 
@@ -30,8 +32,11 @@ public record TransactionResult(
 public class EconomyService(
     GameDbContext db,
     IGameEventPublisher publisher,
+    IOptions<GameServiceOptions> options,
     ILogger<EconomyService> logger) : IEconomyService
 {
+    private readonly long _initialCoins = options.Value.Economy.InitialCoins;
+
     public async Task<TransactionResult> ProcessTransactionAsync(string userId, long amount, string? referenceId = null,
         string? idempotencyKey = null)
     {
@@ -90,7 +95,7 @@ public class EconomyService(
                     if (user is null)
                         return new TransactionResult(false, 0, TransactionErrorType.Unknown, "User account not found.");
 
-                    var initialCoins = 100 + amount;
+                    var initialCoins = _initialCoins + amount;
                     if (initialCoins < 0)
                         return new TransactionResult(false, 0, TransactionErrorType.InsufficientFunds,
                             "Insufficient funds for initial operation");

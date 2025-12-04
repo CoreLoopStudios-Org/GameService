@@ -47,9 +47,11 @@
     }
     else if (luckyMineState != null)
     {
-        <div class="alert @(luckyMineState.Status == "Active" ? "alert-info" : "alert-warning")">
+        <div class="alert @(luckyMineState.Status == "Active" ? "alert-info" : luckyMineState.Status == "CashedOut" ? "alert-success" : "alert-danger")">
             Status: <strong>@luckyMineState.Status</strong> | 
-            Mines: @luckyMineState.RemainingMines / @luckyMineState.TotalTiles
+            Mines: @luckyMineState.TotalMines / @luckyMineState.TotalTiles |
+            Revealed: @luckyMineState.RevealedSafeCount |
+            Winnings: @luckyMineState.CurrentWinnings
         </div>
         
         <LuckyMineAdminPanel Dto="luckyMineState"/>

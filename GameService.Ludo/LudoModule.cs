@@ -4,6 +4,7 @@ using GameService.GameCore;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GameService.Ludo;
@@ -15,6 +16,11 @@ public sealed class LudoModule : IGameModule
 
     public void RegisterServices(IServiceCollection services)
     {
+        // Register Ludo-specific options from configuration
+        services.AddOptions<LudoOptions>()
+            .Configure<IConfiguration>((opts, config) => 
+                config.GetSection(LudoOptions.SectionName).Bind(opts));
+
         services.AddKeyedSingleton<IGameEngine, LudoGameEngine>(GameName);
         services.AddKeyedSingleton<IGameRoomService, LudoRoomService>(GameName);
     }

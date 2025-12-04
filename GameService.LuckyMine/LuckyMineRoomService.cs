@@ -16,11 +16,14 @@ public sealed class LuckyMineRoomService(
     {
         var roomId = GenerateId();
 
-        var totalTiles = meta.Config.TryGetValue("TotalTiles", out var tStr) && int.TryParse(tStr, out var t) ? t : 100;
-        var mineCount = meta.Config.TryGetValue("TotalMines", out var mStr) && int.TryParse(mStr, out var m) ? m : 20;
+        var totalTiles = meta.Config.TryGetValue("TotalTiles", out var tStr) && int.TryParse(tStr, out var t) ? t : 25;
+        var mineCount = meta.Config.TryGetValue("TotalMines", out var mStr) && int.TryParse(mStr, out var m) ? m : 5;
 
         totalTiles = Math.Clamp(totalTiles, 10, 128);
         mineCount = Math.Clamp(mineCount, 1, totalTiles - 1);
+
+        // Single player game - MaxPlayers is always 1
+        var singlePlayerMeta = meta with { MaxPlayers = 1 };
 
         var state = new LuckyMineState
         {
@@ -28,12 +31,14 @@ public sealed class LuckyMineRoomService(
             TotalMines = (byte)mineCount,
             EntryCost = (int)meta.EntryFee,
             RewardSlope = 0.5f,
-            Status = (byte)LuckyMineStatus.Active
+            Status = (byte)LuckyMineStatus.Active,
+            RevealedSafeCount = 0,
+            CurrentWinnings = 0
         };
 
         PopulateMines(ref state, totalTiles, mineCount);
 
-        await _repository.SaveAsync(roomId, state, meta);
+        await _repository.SaveAsync(roomId, state, singlePlayerMeta);
         logger.LogInformation("Created LuckyMine room {RoomId} (Mines: {Mines}/{Tiles})", roomId, mineCount, totalTiles);
 
         return roomId;
@@ -46,14 +51,16 @@ public sealed class LuckyMineRoomService(
         var ctx = await _repository.LoadAsync(roomId);
         if (ctx == null) return JoinRoomResult.Error("Room not found");
 
+        // Already in the game
         if (ctx.Meta.PlayerSeats.TryGetValue(userId, out var seat)) return JoinRoomResult.Ok(seat);
-        if (ctx.Meta.PlayerSeats.Count >= ctx.Meta.MaxPlayers) return JoinRoomResult.Error("Room full");
+        
+        // Single player - only one player allowed
+        if (ctx.Meta.PlayerSeats.Count >= 1) return JoinRoomResult.Error("Room already has a player");
 
-        var newSeat = ctx.Meta.PlayerSeats.Count;
-        var newSeats = new Dictionary<string, int>(ctx.Meta.PlayerSeats) { [userId] = newSeat };
+        var newSeats = new Dictionary<string, int>(ctx.Meta.PlayerSeats) { [userId] = 0 };
 
         await _repository.SaveAsync(roomId, ctx.State, ctx.Meta with { PlayerSeats = newSeats });
-        return JoinRoomResult.Ok(newSeat);
+        return JoinRoomResult.Ok(0);
     }
 
     public async Task LeaveRoomAsync(string roomId, string userId)

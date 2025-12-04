@@ -1,14 +1,25 @@
 @using GameService.LuckyMine
 <div class="card shadow-sm">
     <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="bi bi-grid-3x3 me-2"></i>Lucky Mine God Mode</h5>
-        <div>
-            <span class="badge bg-danger">Mines: @Dto?.RemainingMines</span>
+        <h5 class="mb-0"><i class="bi bi-grid-3x3 me-2"></i>Lucky Mine (Single Player)</h5>
+        <div class="d-flex gap-2">
+            <span class="badge bg-danger">Mines: @Dto?.TotalMines</span>
+            <span class="badge bg-success">Safe: @Dto?.RevealedSafeCount</span>
+            <span class="badge bg-warning text-dark">Winnings: @Dto?.CurrentWinnings</span>
         </div>
     </div>
     <div class="card-body bg-light">
         @if (Dto != null)
         {
+            <div class="text-center mb-3">
+                <span class="badge @GetStatusBadgeClass() fs-6">@Dto.Status</span>
+                @if (Dto.Status == "Active" && Dto.RevealedSafeCount > 0)
+                {
+                    <div class="mt-2">
+                        <small class="text-muted">Next tile win: <strong class="text-success">@Dto.NextTileWinnings</strong></small>
+                    </div>
+                }
+            </div>
             <div class="d-flex flex-wrap gap-1 justify-content-center" style="max-width: 800px; margin: 0 auto;">
                 @for (var i = 0; i < Dto.TotalTiles; i++)
                 {
@@ -24,7 +35,7 @@
                         @if (isRevealed)
                         {
                             if (isMine) { <i class="bi bi-radioactive fs-5"></i> }
-                            else { <span class="fw-bold small">SAFE</span> }
+                            else { <span class="fw-bold small">✓</span> }
                         }
                         else
                         {
@@ -46,4 +57,12 @@
     [Parameter] public LuckyMineFullDto? Dto { get; set; }
 
     private bool IsBitSet(ulong mask, int bit) => (mask & (1UL << bit)) != 0;
+
+    private string GetStatusBadgeClass() => Dto?.Status switch
+    {
+        "Active" => "bg-primary",
+        "CashedOut" => "bg-success",
+        "HitMine" => "bg-danger",
+        _ => "bg-secondary"
+    };
 }

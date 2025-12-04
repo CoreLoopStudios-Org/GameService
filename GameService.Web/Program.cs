@@ -1,3 +1,4 @@
+using GameService.ServiceDefaults.Configuration;
 using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.Security;
 using GameService.Web;
@@ -12,6 +13,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 builder.AddRedisOutputCache("cache");
 builder.AddRedisClient("cache");
+
+builder.Services.Configure<GameServiceOptions>(builder.Configuration.GetSection(GameServiceOptions.SectionName));
 
 builder.Services.AddSingleton<PlayerUpdateNotifier>();
 builder.Services.AddScoped<ToastService>();

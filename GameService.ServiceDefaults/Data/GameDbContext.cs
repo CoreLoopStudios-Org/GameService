@@ -1,14 +1,25 @@
 using System.ComponentModel.DataAnnotations;
+using GameService.ServiceDefaults.Configuration;
 using GameService.ServiceDefaults.DTOs;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace GameService.ServiceDefaults.Data;
 
-public class GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPublisher? publisher = null)
-    : IdentityDbContext<ApplicationUser>(options)
+public class GameDbContext : IdentityDbContext<ApplicationUser>
 {
+    private readonly IGameEventPublisher? _publisher;
+    private readonly long _initialCoins;
+
+    public GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPublisher? publisher = null, IOptions<GameServiceOptions>? gameOptions = null)
+        : base(options)
+    {
+        _publisher = publisher;
+        _initialCoins = gameOptions?.Value.Economy.InitialCoins ?? 100;
+    }
+
     public DbSet<PlayerProfile> PlayerProfiles => Set<PlayerProfile>();
     public DbSet<GameRoomTemplate> RoomTemplates => Set<GameRoomTemplate>();
     public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
@@ -51,13 +62,13 @@ public class GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPu
             new GameRoomTemplate { Id = 2, Name = "1v1 Ludo", GameType = "Ludo", MaxPlayers = 2, EntryFee = 500 },
             new GameRoomTemplate
             {
-                Id = 3, Name = "Standard Mines", GameType = "LuckyMine", MaxPlayers = 20, EntryFee = 10,
-                ConfigJson = "{\"TotalMines\":20,\"TotalTiles\":100}"
+                Id = 3, Name = "Standard Mines", GameType = "LuckyMine", MaxPlayers = 1, EntryFee = 10,
+                ConfigJson = "{\"TotalMines\":5,\"TotalTiles\":25}"
             },
             new GameRoomTemplate
             {
-                Id = 4, Name = "Impossible Mines", GameType = "LuckyMine", MaxPlayers = 10, EntryFee = 100,
-                ConfigJson = "{\"TotalMines\":90,\"TotalTiles\":100}"
+                Id = 4, Name = "High Risk Mines", GameType = "LuckyMine", MaxPlayers = 1, EntryFee = 100,
+                ConfigJson = "{\"TotalMines\":15,\"TotalTiles\":25}"
             }
         );
     }
@@ -79,13 +90,13 @@ public class GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPu
                 {
                     User = user,
                     UserId = user.Id,
-                    Coins = 100,
+                    Coins = _initialCoins,
                     Version = Guid.NewGuid()
                 });
         }
 
         var addedProfiles = new List<PlayerProfile>();
-        if (publisher != null)
+        if (_publisher != null)
             addedProfiles = ChangeTracker.Entries<PlayerProfile>()
                 .Where(e => e.State == EntityState.Added)
                 .Select(e => e.Entity)
@@ -93,7 +104,7 @@ public class GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPu
 
         var result = await base.SaveChangesAsync(cancellationToken);
 
-        if (result > 0 && addedProfiles.Count > 0 && publisher != null)
+        if (result > 0 && addedProfiles.Count > 0 && _publisher != null)
             foreach (var profile in addedProfiles)
             {
                 var username = profile.User?.UserName ?? "New Player";
@@ -107,7 +118,7 @@ public class GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPu
                     PlayerChangeType.Updated,
                     profile.Id);
 
-                _ = Task.Run(() => publisher.PublishPlayerUpdatedAsync(message), cancellationToken);
+                _ = Task.Run(() => _publisher.PublishPlayerUpdatedAsync(message), cancellationToken);
             }
 
         return result;

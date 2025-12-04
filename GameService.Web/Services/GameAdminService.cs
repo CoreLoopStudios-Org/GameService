@@ -67,7 +67,7 @@ public class GameAdminService(HttpClient http)
     {
         try
         {
-            return await http.GetFromJsonAsync<JsonElement>($"/admin/luckymine/{roomId}/state");
+            return await http.GetFromJsonAsync<JsonElement>($"/admin/luckymine/{roomId}/full-state");
         }
         catch
         {

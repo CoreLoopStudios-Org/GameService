@@ -1,5 +1,6 @@
 using GameService.GameCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace GameService.Ludo;
 
@@ -8,6 +9,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
     private readonly IDiceRoller _diceRoller;
     private readonly ILogger<LudoGameEngine> _logger;
     private readonly IGameRepository<LudoState> _repository;
+    private readonly int _turnTimeoutSeconds;
 
     private static readonly string[] CachedMoveActions = ["move:0", "move:1", "move:2", "move:3"];
     private static readonly string[] CachedRollAction = ["roll"];
@@ -15,15 +17,17 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
 
     public LudoGameEngine(
         IGameRepositoryFactory repositoryFactory,
-        ILogger<LudoGameEngine> logger)
+        ILogger<LudoGameEngine> logger,
+        IOptions<LudoOptions>? options = null)
     {
         _repository = repositoryFactory.Create<LudoState>("Ludo");
         _diceRoller = new ServerDiceRoller();
         _logger = logger;
+        _turnTimeoutSeconds = options?.Value.TurnTimeoutSeconds ?? 30;
     }
 
     public string GameType => "Ludo";
-    public int TurnTimeoutSeconds => 30;
+    public int TurnTimeoutSeconds => _turnTimeoutSeconds;
 
     public async Task<GameActionResult> ExecuteAsync(string roomId, GameCommand command)
     {

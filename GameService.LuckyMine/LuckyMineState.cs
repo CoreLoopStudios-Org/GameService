@@ -10,7 +10,7 @@ public struct LuckyMineState
     [FieldOffset(16)] public ulong RevealedMask0;
     [FieldOffset(24)] public ulong RevealedMask1;
 
-    [FieldOffset(32)] public int CurrentPlayerIndex;
+    [FieldOffset(32)] public int RevealedSafeCount;
     
     [FieldOffset(36)] public byte TotalMines;
     [FieldOffset(37)] public byte TotalTiles;
@@ -18,7 +18,7 @@ public struct LuckyMineState
 
     [FieldOffset(40)] public int EntryCost;
     [FieldOffset(44)] public float RewardSlope;
-    [FieldOffset(48)] public ulong DeadPlayersMask;
+    [FieldOffset(48)] public long CurrentWinnings;
 
     public readonly bool IsMine(int index)
     {
@@ -42,23 +42,11 @@ public struct LuckyMineState
         if (index < 64) RevealedMask0 |= 1UL << index;
         else RevealedMask1 |= 1UL << (index - 64);
     }
-
-    public void SetDead(int playerSeat)
-    {
-        if ((uint)playerSeat >= 64) return;
-        DeadPlayersMask |= 1UL << playerSeat;
-    }
-
-    public readonly bool IsDead(int playerSeat)
-    {
-        if ((uint)playerSeat >= 64) return false;
-        return (DeadPlayersMask & (1UL << playerSeat)) != 0;
-    }
 }
 
 public enum LuckyMineStatus : byte
 {
     Active = 0,
-    AllMinesHit = 1,
-    GameOver = 2
+    HitMine = 1,
+    CashedOut = 2
 }

@@ -1,4 +1,6 @@
 using GameService.GameCore;
+using GameService.ServiceDefaults.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace GameService.ApiService.Infrastructure.Workers;
 
@@ -10,9 +12,10 @@ public sealed class GameLoopWorker(
     IServiceProvider serviceProvider,
     IRoomRegistry roomRegistry,
     IGameBroadcaster broadcaster,
+    IOptions<GameServiceOptions> options,
     ILogger<GameLoopWorker> logger) : BackgroundService
 {
-    private const int TickIntervalMs = 5000;
+    private readonly int _tickIntervalMs = options.Value.GameLoop.TickIntervalMs;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -29,7 +32,7 @@ public sealed class GameLoopWorker(
                 logger.LogError(ex, "Error in GameLoopWorker tick");
             }
 
-            await Task.Delay(TickIntervalMs, stoppingToken);
+            await Task.Delay(_tickIntervalMs, stoppingToken);
         }
     }
 

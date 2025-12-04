@@ -29,17 +29,38 @@ public sealed class LuckyMineModule : IGameModule
 
             if (ctx == null) return Results.NotFound();
 
+            var state = ctx.State;
+            int safeTiles = state.TotalTiles - state.TotalMines;
+            long nextWinnings = 0;
+            if (safeTiles > 0 && state.RevealedSafeCount < safeTiles)
+            {
+                var tempState = state;
+                tempState.RevealedSafeCount++;
+                double multiplier = 1.0;
+                int remaining = safeTiles;
+                int total = state.TotalTiles;
+                for (int i = 0; i < tempState.RevealedSafeCount; i++)
+                {
+                    multiplier *= (double)total / remaining;
+                    remaining--;
+                    total--;
+                }
+                nextWinnings = (long)(state.EntryCost * multiplier * 0.97);
+            }
+
             var dto = new LuckyMineFullDto
             {
-                RevealedMask0 = ctx.State.RevealedMask0,
-                RevealedMask1 = ctx.State.RevealedMask1,
-                CurrentPlayerIndex = ctx.State.CurrentPlayerIndex,
-                TotalTiles = ctx.State.TotalTiles,
-                RemainingMines = ctx.State.TotalMines,
-                EntryCost = ctx.State.EntryCost,
-                Status = ((LuckyMineStatus)ctx.State.Status).ToString(),
-                MineMask0 = ctx.State.MineMask0,
-                MineMask1 = ctx.State.MineMask1
+                RevealedMask0 = state.RevealedMask0,
+                RevealedMask1 = state.RevealedMask1,
+                TotalTiles = state.TotalTiles,
+                TotalMines = state.TotalMines,
+                RevealedSafeCount = state.RevealedSafeCount,
+                EntryCost = state.EntryCost,
+                CurrentWinnings = state.CurrentWinnings,
+                NextTileWinnings = nextWinnings,
+                Status = ((LuckyMineStatus)state.Status).ToString(),
+                MineMask0 = state.MineMask0,
+                MineMask1 = state.MineMask1
             };
 
             return Results.Ok(dto);

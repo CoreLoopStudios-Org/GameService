@@ -6,6 +6,15 @@
 # ==========================================
 # 0. CONFIGURATION & SEEDS
 # ==========================================
+# These values are now configurable via appsettings.json
+# See GameService section in appsettings.Development.json:
+#   - AdminSeed.Email / AdminSeed.Password
+#   - Economy.InitialCoins
+#   - Session.ReconnectionGracePeriodSeconds
+#   - RateLimit.PermitLimit / RateLimit.WindowMinutes
+#   - GameLoop.TickIntervalMs
+#   - Ludo.TurnTimeoutSeconds
+# ==========================================
 @adminEmail = admin@gameservice.com
 @adminPassword = AdminPass123!
 
@@ -219,7 +228,7 @@ Content-Type: {{contentType}}
 ###
 # @name GetLuckyMineState
 # Fetch specific mine state (cheats/god mode view)
-GET {{host}}/admin/luckymine/{{mine_room_id}}/state
+GET {{host}}/admin/luckymine/{{mine_room_id}}/full-state
 Authorization: Bearer {{admin_token}}
 
 > {%
