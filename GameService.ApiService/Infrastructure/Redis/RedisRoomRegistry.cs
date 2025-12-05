@@ -153,10 +153,19 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
 
     public async Task<IReadOnlyList<string>> GetRoomsNeedingTimeoutCheckAsync(string gameType, int maxRooms)
     {
-        var members = await _db.SortedSetRangeByRankAsync(
+        // Use ZRANGEBYSCORE to only get rooms with activity older than timeout threshold
+        // This is O(log(N)+M) where M is the number of results, not O(N) like scanning all rooms
+        // Rooms with activity timestamp <= (now - timeout_buffer) are candidates for timeout
+        var maxScore = DateTimeOffset.UtcNow.AddSeconds(-5).ToUnixTimeSeconds(); // 5 second buffer
+        
+        var members = await _db.SortedSetRangeByScoreAsync(
             ActivityIndexKey(gameType),
+            double.NegativeInfinity,
+            maxScore,
+            Exclude.None,
+            Order.Ascending,
             0,
-            maxRooms - 1);
+            maxRooms);
 
         return members.Select(m => m.ToString()).ToList();
     }

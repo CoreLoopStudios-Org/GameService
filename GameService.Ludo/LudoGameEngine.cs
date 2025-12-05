@@ -4,10 +4,42 @@ using Microsoft.Extensions.Options;
 
 namespace GameService.Ludo;
 
+/// <summary>
+///     Ludo game action constants - prevents typos in action names
+/// </summary>
+public static class LudoActions
+{
+    public const string Roll = "roll";
+    public const string Move = "move";
+    
+    // Cached formatted move actions for legal moves response
+    public static readonly string[] MoveActions = 
+    [
+        $"{Move}:0", 
+        $"{Move}:1", 
+        $"{Move}:2", 
+        $"{Move}:3"
+    ];
+}
+
+/// <summary>
+///     Ludo game event constants - prevents typos in event names
+/// </summary>
+public static class LudoEvents
+{
+    public const string DiceRolled = "DiceRolled";
+    public const string TokenMoved = "TokenMoved";
+    public const string TokenCaptured = "TokenCaptured";
+    public const string PlayerFinished = "PlayerFinished";
+    public const string TurnChanged = "TurnChanged";
+    public const string TurnTimeout = "TurnTimeout";
+    public const string GameEnded = "GameEnded";
+}
+
 public sealed class LudoGameEngine : ITurnBasedGameEngine
 {
-    private static readonly string[] CachedMoveActions = ["move:0", "move:1", "move:2", "move:3"];
-    private static readonly string[] CachedRollAction = ["roll"];
+    private static readonly string[] CachedMoveActions = LudoActions.MoveActions;
+    private static readonly string[] CachedRollAction = [LudoActions.Roll];
     private static readonly string[] EmptyActions = [];
     private readonly IDiceRoller _diceRoller;
     private readonly ILogger<LudoGameEngine> _logger;
@@ -18,7 +50,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         ILogger<LudoGameEngine> logger,
         IOptions<LudoOptions>? options = null)
     {
-        _repository = repositoryFactory.Create<LudoState>("Ludo");
+        _repository = repositoryFactory.Create<LudoState>(GameType);
         _diceRoller = new ServerDiceRoller();
         _logger = logger;
         TurnTimeoutSeconds = options?.Value.TurnTimeoutSeconds ?? 30;
@@ -31,10 +63,10 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
     {
         var actionSpan = command.Action.AsSpan();
 
-        if (actionSpan.Equals("roll", StringComparison.OrdinalIgnoreCase))
+        if (actionSpan.Equals(LudoActions.Roll, StringComparison.OrdinalIgnoreCase))
             return await HandleRollAsync(roomId, command.UserId);
 
-        if (actionSpan.StartsWith("move", StringComparison.OrdinalIgnoreCase))
+        if (actionSpan.StartsWith(LudoActions.Move, StringComparison.OrdinalIgnoreCase))
             return await HandleMoveAsync(roomId, command.UserId, command.GetInt("tokenIndex"));
 
         return GameActionResult.Error($"Unknown action: {command.Action}");
@@ -53,11 +85,11 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
 
         _logger.LogInformation("Timeout in room {RoomId} for player {Player}", roomId, engine.State.CurrentPlayer);
 
-        var events = new List<GameEvent> { new("TurnTimeout", new { Player = engine.State.CurrentPlayer }) };
+        var events = new List<GameEvent> { new(LudoEvents.TurnTimeout, new { Player = engine.State.CurrentPlayer }) };
 
         if (engine.State.LastDiceRoll == 0)
             if (engine.TryRollDice(out var res))
-                events.Add(new GameEvent("DiceRolled",
+                events.Add(new GameEvent(LudoEvents.DiceRolled,
                     new { Value = res.DiceValue, Player = engine.State.CurrentPlayer, AutoPlay = true }));
 
         int mask = engine.GetLegalMovesMask();
@@ -67,7 +99,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
 
             if (engine.TryMoveToken(tokenToMove, out var res))
             {
-                events.Add(new GameEvent("TokenMoved",
+                events.Add(new GameEvent(LudoEvents.TokenMoved,
                     new
                     {
                         Player = ctx.State.CurrentPlayer, TokenIndex = tokenToMove, NewPosition = res.NewPos,
@@ -78,7 +110,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         }
 
         if (engine.State.TurnId != ctx.State.TurnId || engine.State.CurrentPlayer != ctx.State.CurrentPlayer)
-            events.Add(new GameEvent("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
+            events.Add(new GameEvent(LudoEvents.TurnChanged, new { NewPlayer = engine.State.CurrentPlayer }));
 
         var newMeta = ctx.Meta with { TurnStartedAt = DateTimeOffset.UtcNow };
         await _repository.SaveAsync(roomId, engine.State, newMeta);
@@ -164,10 +196,10 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         var engine = new LudoEngine(_diceRoller) { State = ctx.State };
         if (!engine.TryRollDice(out var res)) return GameActionResult.Error($"Roll failed: {res.Status}");
 
-        var events = new List<GameEvent> { new("DiceRolled", new { Value = res.DiceValue, Player = seat }) };
+        var events = new List<GameEvent> { new(LudoEvents.DiceRolled, new { Value = res.DiceValue, Player = seat }) };
 
         if (res.Status.HasFlag(LudoStatus.TurnPassed) || res.Status.HasFlag(LudoStatus.ForfeitTurn))
-            events.Add(new GameEvent("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
+            events.Add(new GameEvent(LudoEvents.TurnChanged, new { NewPlayer = engine.State.CurrentPlayer }));
 
         var newMeta = ctx.Meta with { TurnStartedAt = DateTimeOffset.UtcNow };
         await _repository.SaveAsync(roomId, engine.State, newMeta);
@@ -187,11 +219,11 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         if (!engine.TryMoveToken(tIdx, out var res)) return GameActionResult.Error($"Move failed: {res.Status}");
 
         var events = new List<GameEvent>
-            { new("TokenMoved", new { Player = seat, TokenIndex = tIdx, NewPosition = res.NewPos }) };
+            { new(LudoEvents.TokenMoved, new { Player = seat, TokenIndex = tIdx, NewPosition = res.NewPos }) };
         ProcessEvents(events, res, seat);
 
         if (!res.Status.HasFlag(LudoStatus.ExtraTurn) || res.Status.HasFlag(LudoStatus.ErrorGameEnded))
-            events.Add(new GameEvent("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
+            events.Add(new GameEvent(LudoEvents.TurnChanged, new { NewPlayer = engine.State.CurrentPlayer }));
 
         var newMeta = ctx.Meta with { TurnStartedAt = DateTimeOffset.UtcNow };
         await _repository.SaveAsync(roomId, engine.State, newMeta);
@@ -249,14 +281,14 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
     private void ProcessEvents(List<GameEvent> list, MoveResult res, int p)
     {
         if (res.Status.HasFlag(LudoStatus.CapturedOpponent))
-            list.Add(new GameEvent("TokenCaptured",
+            list.Add(new GameEvent(LudoEvents.TokenCaptured,
                 new { CapturedPlayer = res.CapturedPid, CapturedToken = res.CapturedTid }));
 
         if (res.Status.HasFlag(LudoStatus.PlayerFinished))
-            list.Add(new GameEvent("PlayerFinished", new { Player = p }));
+            list.Add(new GameEvent(LudoEvents.PlayerFinished, new { Player = p }));
 
         if (res.Status.HasFlag(LudoStatus.ErrorGameEnded))
-            list.Add(new GameEvent("GameEnded", new { }));
+            list.Add(new GameEvent(LudoEvents.GameEnded, new { }));
     }
 
     private LudoStateDto MapToDto(ref LudoState s, GameRoomMeta m)
