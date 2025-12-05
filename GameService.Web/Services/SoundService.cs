@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 
 namespace GameService.Web.Services;
@@ -25,7 +24,6 @@ public class SoundService(IJSRuntime jsRuntime, ILogger<SoundService> logger)
         }
         catch (JSException ex)
         {
-            // Audio initialization failed - this is non-critical, game continues without sound
             logger.LogDebug(ex, "Audio initialization failed - sounds will be disabled");
         }
     }
@@ -68,14 +66,13 @@ public class SoundService(IJSRuntime jsRuntime, ILogger<SoundService> logger)
     private async Task PlaySoundAsync(string soundName)
     {
         if (!_isInitialized) return;
-        
+
         try
         {
             await jsRuntime.InvokeVoidAsync("GameSounds.play", soundName);
         }
         catch (JSException)
         {
-            // Sound playback failed - non-critical, continue silently
         }
     }
 }

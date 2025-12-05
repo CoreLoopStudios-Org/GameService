@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
 using GameService.ApiService.Features.Economy;
-using GameService.ApiService.Features.Games;
 using GameService.GameCore;
 using GameService.ServiceDefaults.Configuration;
 using GameService.ServiceDefaults.Data;
@@ -25,9 +24,9 @@ public class GameHub(
     IOptions<GameServiceOptions> options,
     ILogger<GameHub> logger) : Hub
 {
-    private readonly int _reconnectionGracePeriodSeconds = options.Value.Session.ReconnectionGracePeriodSeconds;
-    private readonly int _maxMessagesPerMinute = options.Value.RateLimit.SignalRMessagesPerMinute;
     private readonly int _maxConnectionsPerUser = options.Value.Session.MaxConnectionsPerUser;
+    private readonly int _maxMessagesPerMinute = options.Value.RateLimit.SignalRMessagesPerMinute;
+    private readonly int _reconnectionGracePeriodSeconds = options.Value.Session.ReconnectionGracePeriodSeconds;
 
     private string UserId => Context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
     private string UserName => Context.User?.Identity?.Name ?? "Unknown";
@@ -39,17 +38,17 @@ public class GameHub(
             logger.LogWarning("Rate limit exceeded for user {UserId}", UserId);
             return false;
         }
+
         return true;
     }
 
     public override async Task OnConnectedAsync()
     {
-        // Check connection limit per user
         var connectionCount = await roomRegistry.IncrementConnectionCountAsync(UserId);
         if (connectionCount > _maxConnectionsPerUser)
         {
             await roomRegistry.DecrementConnectionCountAsync(UserId);
-            logger.LogWarning("Connection limit exceeded for user {UserId}: {Count}/{Max}", 
+            logger.LogWarning("Connection limit exceeded for user {UserId}: {Count}/{Max}",
                 UserId, connectionCount, _maxConnectionsPerUser);
             Context.Abort();
             return;
@@ -57,14 +56,13 @@ public class GameHub(
 
         await Groups.AddToGroupAsync(Context.ConnectionId, "Lobby");
 
-        // Check if player was disconnected and is reconnecting within grace period
         var disconnectedRoomId = await roomRegistry.TryGetAndRemoveDisconnectedPlayerAsync(UserId);
         if (disconnectedRoomId != null)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, disconnectedRoomId);
             await Clients.Group(disconnectedRoomId)
                 .SendAsync("PlayerReconnected", new PlayerReconnectedEvent(UserId, UserName));
-            logger.LogInformation("Player {UserId} reconnected to room {RoomId} within grace period", 
+            logger.LogInformation("Player {UserId} reconnected to room {RoomId} within grace period",
                 UserId, disconnectedRoomId);
         }
 
@@ -76,55 +74,47 @@ public class GameHub(
     {
         await roomRegistry.DecrementConnectionCountAsync(UserId);
 
-        // O(1) lookup instead of iterating all rooms
         var roomId = await roomRegistry.GetUserRoomAsync(UserId);
-        
+
         if (roomId != null)
         {
             var gameType = await roomRegistry.GetGameTypeAsync(roomId);
             if (gameType != null)
             {
-                // Acquire lock to prevent race condition with reconnection
                 var lockKey = $"disconnect:{UserId}";
-                if (await roomRegistry.TryAcquireLockAsync(lockKey, TimeSpan.FromSeconds(_reconnectionGracePeriodSeconds + 5)))
-                {
+                if (await roomRegistry.TryAcquireLockAsync(lockKey,
+                        TimeSpan.FromSeconds(_reconnectionGracePeriodSeconds + 5)))
                     try
                     {
-                        // Store in Redis with TTL for automatic cleanup
                         await roomRegistry.SetDisconnectedPlayerAsync(
-                            UserId, 
-                            roomId, 
+                            UserId,
+                            roomId,
                             TimeSpan.FromSeconds(_reconnectionGracePeriodSeconds + 1));
 
                         await Clients.Group(roomId).SendAsync("PlayerDisconnected",
                             new PlayerDisconnectedEvent(UserId, UserName, _reconnectionGracePeriodSeconds));
 
-                        // Schedule cleanup after grace period using fire-and-forget
-                        // This works across instances because Redis TTL handles the state
                         var capturedUserId = UserId;
                         var capturedUserName = UserName;
                         var capturedRoomId = roomId;
                         var capturedGameType = gameType;
                         var gracePeriod = _reconnectionGracePeriodSeconds;
                         var capturedLockKey = lockKey;
-                        
+
                         _ = Task.Delay(TimeSpan.FromSeconds(gracePeriod + 2)).ContinueWith(async _ =>
                         {
-                            // Re-acquire lock for the cleanup operation
                             if (!await roomRegistry.TryAcquireLockAsync(capturedLockKey, TimeSpan.FromSeconds(5)))
-                            {
-                                // Another operation is handling this user
                                 return;
-                            }
-                            
+
                             try
                             {
-                                // Check if player is still disconnected (Redis key still exists = not reconnected)
-                                var stillDisconnected = await roomRegistry.TryGetAndRemoveDisconnectedPlayerAsync(capturedUserId);
+                                var stillDisconnected =
+                                    await roomRegistry.TryGetAndRemoveDisconnectedPlayerAsync(capturedUserId);
                                 if (stillDisconnected == capturedRoomId)
                                 {
-                                    var roomService = serviceProvider.GetKeyedService<IGameRoomService>(capturedGameType);
-                                    if (roomService != null) 
+                                    var roomService =
+                                        serviceProvider.GetKeyedService<IGameRoomService>(capturedGameType);
+                                    if (roomService != null)
                                         await roomService.LeaveRoomAsync(capturedRoomId, capturedUserId);
 
                                     await roomRegistry.RemoveUserRoomAsync(capturedUserId);
@@ -133,7 +123,8 @@ public class GameHub(
                                     await hubContext.Clients.Group(capturedRoomId).SendAsync("PlayerLeft",
                                         new PlayerLeftEvent(capturedUserId, capturedUserName));
 
-                                    logger.LogInformation("Player {UserId} grace period expired, removed from room {RoomId}",
+                                    logger.LogInformation(
+                                        "Player {UserId} grace period expired, removed from room {RoomId}",
                                         capturedUserId, capturedRoomId);
                                 }
                             }
@@ -145,10 +136,8 @@ public class GameHub(
                     }
                     finally
                     {
-                        // Release the initial lock after setting up the delayed task
                         await roomRegistry.ReleaseLockAsync(lockKey);
                     }
-                }
             }
         }
 
@@ -240,7 +229,6 @@ public class GameHub(
 
             var roomId = await roomService.CreateRoomAsync(meta);
 
-            // Track user→room mapping for creator
             await roomRegistry.SetUserRoomAsync(UserId, roomId);
 
             await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
@@ -268,51 +256,51 @@ public class GameHub(
         var roomService = serviceProvider.GetKeyedService<IGameRoomService>(gameType);
         if (roomService == null) return new JoinRoomResponse(false, -1, "Game type not supported");
 
-        // Check room meta for entry fee before joining
         var meta = await roomService.GetRoomMetaAsync(roomId);
         if (meta == null) return new JoinRoomResponse(false, -1, "Room not found");
-        
-        // Reserve entry fee atomically (if required and player not already in room)
+
+        if (!meta.IsPublic && !meta.PlayerSeats.ContainsKey(UserId))
+        {
+            logger.LogWarning("Blocked unauthorized join attempt to private room {RoomId} by {UserId}", roomId, UserId);
+            return new JoinRoomResponse(false, -1, "This is a private room. You need an invite to join.");
+        }
+
         EntryFeeReservation? reservation = null;
         if (meta.EntryFee > 0 && !meta.PlayerSeats.ContainsKey(UserId))
         {
             using var scope = serviceProvider.CreateScope();
             var economyService = scope.ServiceProvider.GetRequiredService<IEconomyService>();
-            
+
             reservation = await economyService.ReserveEntryFeeAsync(UserId, meta.EntryFee, roomId);
             if (!reservation.Success)
-            {
                 return new JoinRoomResponse(false, -1, reservation.ErrorMessage ?? "Insufficient funds for entry fee");
-            }
         }
 
-        // Try to join the room
         var result = await roomService.JoinRoomAsync(roomId, UserId);
-        
+
         if (!result.Success)
         {
-            // Failed to join - refund the reserved entry fee
             if (reservation != null)
             {
                 using var scope = serviceProvider.CreateScope();
                 var economyService = scope.ServiceProvider.GetRequiredService<IEconomyService>();
                 await economyService.RefundEntryFeeAsync(reservation);
-                logger.LogInformation("Refunded entry fee for player {UserId} - failed to join room {RoomId}: {Error}", 
+                logger.LogInformation("Refunded entry fee for player {UserId} - failed to join room {RoomId}: {Error}",
                     UserId, roomId, result.ErrorMessage);
             }
+
             return new JoinRoomResponse(false, -1, result.ErrorMessage);
         }
 
-        // Successfully joined - commit the entry fee reservation
         if (reservation != null)
         {
             using var scope = serviceProvider.CreateScope();
             var economyService = scope.ServiceProvider.GetRequiredService<IEconomyService>();
             await economyService.CommitEntryFeeAsync(reservation);
-            logger.LogInformation("Player {UserId} paid entry fee {Fee} for room {RoomId}", UserId, meta.EntryFee, roomId);
+            logger.LogInformation("Player {UserId} paid entry fee {Fee} for room {RoomId}", UserId, meta.EntryFee,
+                roomId);
         }
 
-        // Track user→room mapping for O(1) disconnect lookup
         await roomRegistry.SetUserRoomAsync(UserId, roomId);
 
         await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
@@ -343,7 +331,6 @@ public class GameHub(
             if (roomService != null) await roomService.LeaveRoomAsync(roomId, UserId);
         }
 
-        // Remove user→room mapping
         await roomRegistry.RemoveUserRoomAsync(UserId);
 
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId);
@@ -358,7 +345,6 @@ public class GameHub(
     /// </summary>
     public async Task<GameActionResult> PerformAction(string roomId, string actionName, JsonElement payload)
     {
-        // Rate limit check using Redis
         if (!await CheckRateLimitAsync())
             return GameActionResult.Error("Rate limit exceeded. Please slow down.");
 
@@ -385,40 +371,40 @@ public class GameHub(
                 await Clients.Caller.SendAsync("ActionError",
                     new ActionErrorEvent(actionName, result.ErrorMessage ?? "Unknown error"));
 
-            // Update room activity for timeout tracking
             if (result.Success)
                 await roomRegistry.UpdateRoomActivityAsync(roomId, gameType);
-            
-            // Handle game archival if game ended
+
             if (result.GameEnded != null)
-            {
-                _ = Task.Run(async () =>
+                try
                 {
-                    try
+                    using var scope = serviceProvider.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<GameDbContext>();
+                    var info = result.GameEnded;
+
+                    var outboxPayload = JsonSerializer.Serialize(new GameEndedPayload(
+                        info.RoomId,
+                        info.GameType,
+                        info.PlayerSeats,
+                        info.WinnerUserId,
+                        info.TotalPot,
+                        info.StartedAt,
+                        info.WinnerRanking,
+                        result.NewState));
+
+                    db.OutboxMessages.Add(new OutboxMessage
                     {
-                        using var scope = serviceProvider.CreateScope();
-                        var archivalService = scope.ServiceProvider.GetRequiredService<IGameArchivalService>();
-                        var info = result.GameEnded;
-                        
-                        await archivalService.EndGameAsync(
-                            info.RoomId,
-                            info.GameType,
-                            result.NewState ?? new { },
-                            info.PlayerSeats,
-                            info.WinnerUserId,
-                            info.TotalPot,
-                            info.StartedAt,
-                            info.WinnerRanking);
-                        
-                        logger.LogInformation("Game archived: {RoomId} (Type: {GameType}, Winner: {Winner})",
-                            info.RoomId, info.GameType, info.WinnerUserId ?? "None");
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "Failed to archive game {RoomId}", roomId);
-                    }
-                });
-            }
+                        EventType = "GameEnded",
+                        Payload = outboxPayload,
+                        CreatedAt = DateTimeOffset.UtcNow
+                    });
+
+                    await db.SaveChangesAsync();
+                    logger.LogInformation("Scheduled archival for Room {RoomId}", info.RoomId);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to schedule game archival for {RoomId}", roomId);
+                }
 
             return result;
         }
@@ -473,3 +459,16 @@ public sealed record PlayerDisconnectedEvent(string UserId, string UserName, int
 public sealed record PlayerReconnectedEvent(string UserId, string UserName);
 
 public sealed record ChatMessageEvent(string UserId, string UserName, string Message, DateTimeOffset Timestamp);
+
+/// <summary>
+///     Payload for GameEnded outbox messages - ensures reliable payout processing
+/// </summary>
+public sealed record GameEndedPayload(
+    string RoomId,
+    string GameType,
+    IReadOnlyDictionary<string, int> PlayerSeats,
+    string? WinnerUserId,
+    long TotalPot,
+    DateTimeOffset StartedAt,
+    IReadOnlyList<string>? WinnerRanking,
+    object? FinalState);

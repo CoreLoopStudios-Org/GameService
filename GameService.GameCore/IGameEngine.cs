@@ -81,10 +81,10 @@ public sealed record GameActionResult
     public bool ShouldBroadcast { get; init; }
     public object? NewState { get; init; }
     public IReadOnlyList<GameEvent> Events { get; init; } = [];
-    
+
     /// <summary>
-    /// If set, indicates the game has ended and should be archived.
-    /// The GameHub will call the archival service when this is populated.
+    ///     If set, indicates the game has ended and should be archived.
+    ///     The GameHub will call the archival service when this is populated.
     /// </summary>
     public GameEndedInfo? GameEnded { get; init; }
 
@@ -102,17 +102,17 @@ public sealed record GameActionResult
     {
         return new GameActionResult { Success = true, ShouldBroadcast = false, Events = events };
     }
-    
+
     public static GameActionResult GameOver(
-        object? state, 
+        object? state,
         GameEndedInfo gameEndedInfo,
         params GameEvent[] events)
     {
-        return new GameActionResult 
-        { 
-            Success = true, 
-            ShouldBroadcast = true, 
-            NewState = state, 
+        return new GameActionResult
+        {
+            Success = true,
+            ShouldBroadcast = true,
+            NewState = state,
             Events = events,
             GameEnded = gameEndedInfo
         };
@@ -120,7 +120,7 @@ public sealed record GameActionResult
 }
 
 /// <summary>
-/// Information needed to archive a completed game
+///     Information needed to archive a completed game
 /// </summary>
 public sealed record GameEndedInfo(
     string RoomId,

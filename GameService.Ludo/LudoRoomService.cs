@@ -22,7 +22,7 @@ public sealed class LudoRoomService : IGameRoomService
         var roomId = GenerateId();
         var engine = new LudoEngine(new ServerDiceRoller());
         engine.InitNewGame(meta.MaxPlayers);
-        
+
         await _repository.SaveAsync(roomId, engine.State, meta);
         _logger.LogInformation("Created Ludo room {RoomId}", roomId);
         return roomId;
@@ -30,7 +30,6 @@ public sealed class LudoRoomService : IGameRoomService
 
     public async Task<JoinRoomResult> JoinRoomAsync(string roomId, string userId)
     {
-        // Acquire lock to prevent race conditions on seat assignment
         if (!await _repository.TryAcquireLockAsync(roomId, TimeSpan.FromSeconds(5)))
             return JoinRoomResult.Error("Room is busy. Please try again.");
 
@@ -43,15 +42,14 @@ public sealed class LudoRoomService : IGameRoomService
             if (ctx.Meta.PlayerSeats.Count >= ctx.Meta.MaxPlayers) return JoinRoomResult.Error("Room full");
 
             var taken = ctx.Meta.PlayerSeats.Values.ToHashSet();
-            int newSeat = -1;
-            
-            for (int i = 0; i < 4; i++)
-            {
+            var newSeat = -1;
+
+            for (var i = 0; i < 4; i++)
                 if ((ctx.State.ActiveSeats & (1 << i)) != 0 && !taken.Contains(i))
                 {
-                    newSeat = i; break;
+                    newSeat = i;
+                    break;
                 }
-            }
 
             if (newSeat == -1) return JoinRoomResult.Error("No seats available");
 
@@ -66,20 +64,24 @@ public sealed class LudoRoomService : IGameRoomService
         }
     }
 
-    public async Task DeleteRoomAsync(string roomId) => await _repository.DeleteAsync(roomId);
-    public async Task LeaveRoomAsync(string roomId, string userId) 
+    public async Task DeleteRoomAsync(string roomId)
+    {
+        await _repository.DeleteAsync(roomId);
+    }
+
+    public async Task LeaveRoomAsync(string roomId, string userId)
     {
         if (!await _repository.TryAcquireLockAsync(roomId, TimeSpan.FromSeconds(5)))
-            return; // Best effort - leave silently fails if locked
-        
+            return;
+
         try
         {
             var ctx = await _repository.LoadAsync(roomId);
             if (ctx != null && ctx.Meta.PlayerSeats.ContainsKey(userId))
             {
-                 var newSeats = new Dictionary<string, int>(ctx.Meta.PlayerSeats);
-                 newSeats.Remove(userId);
-                 await _repository.SaveAsync(roomId, ctx.State, ctx.Meta with { PlayerSeats = newSeats });
+                var newSeats = new Dictionary<string, int>(ctx.Meta.PlayerSeats);
+                newSeats.Remove(userId);
+                await _repository.SaveAsync(roomId, ctx.State, ctx.Meta with { PlayerSeats = newSeats });
             }
         }
         finally
@@ -87,7 +89,14 @@ public sealed class LudoRoomService : IGameRoomService
             await _repository.ReleaseLockAsync(roomId);
         }
     }
-    public async Task<GameRoomMeta?> GetRoomMetaAsync(string roomId) => (await _repository.LoadAsync(roomId))?.Meta;
 
-    private string GenerateId() => Convert.ToHexString(RandomNumberGenerator.GetBytes(3));
+    public async Task<GameRoomMeta?> GetRoomMetaAsync(string roomId)
+    {
+        return (await _repository.LoadAsync(roomId))?.Meta;
+    }
+
+    private string GenerateId()
+    {
+        return Convert.ToHexString(RandomNumberGenerator.GetBytes(9));
+    }
 }

@@ -38,6 +38,7 @@ namespace GameService.ApiService;
 [JsonSerializable(typeof(PlayerDisconnectedEvent))]
 [JsonSerializable(typeof(PlayerReconnectedEvent))]
 [JsonSerializable(typeof(ChatMessageEvent))]
+[JsonSerializable(typeof(GameEndedPayload))]
 [JsonSerializable(typeof(Dictionary<string, int>))]
 [JsonSerializable(typeof(GameTemplateDto))]
 [JsonSerializable(typeof(List<GameTemplateDto>))]

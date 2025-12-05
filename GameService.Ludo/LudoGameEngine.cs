@@ -6,14 +6,12 @@ namespace GameService.Ludo;
 
 public sealed class LudoGameEngine : ITurnBasedGameEngine
 {
-    private readonly IDiceRoller _diceRoller;
-    private readonly ILogger<LudoGameEngine> _logger;
-    private readonly IGameRepository<LudoState> _repository;
-    private readonly int _turnTimeoutSeconds;
-
     private static readonly string[] CachedMoveActions = ["move:0", "move:1", "move:2", "move:3"];
     private static readonly string[] CachedRollAction = ["roll"];
     private static readonly string[] EmptyActions = [];
+    private readonly IDiceRoller _diceRoller;
+    private readonly ILogger<LudoGameEngine> _logger;
+    private readonly IGameRepository<LudoState> _repository;
 
     public LudoGameEngine(
         IGameRepositoryFactory repositoryFactory,
@@ -23,24 +21,21 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         _repository = repositoryFactory.Create<LudoState>("Ludo");
         _diceRoller = new ServerDiceRoller();
         _logger = logger;
-        _turnTimeoutSeconds = options?.Value.TurnTimeoutSeconds ?? 30;
+        TurnTimeoutSeconds = options?.Value.TurnTimeoutSeconds ?? 30;
     }
 
     public string GameType => "Ludo";
-    public int TurnTimeoutSeconds => _turnTimeoutSeconds;
+    public int TurnTimeoutSeconds { get; }
 
     public async Task<GameActionResult> ExecuteAsync(string roomId, GameCommand command)
     {
         var actionSpan = command.Action.AsSpan();
 
         if (actionSpan.Equals("roll", StringComparison.OrdinalIgnoreCase))
-        {
             return await HandleRollAsync(roomId, command.UserId);
-        }
-        else if (actionSpan.StartsWith("move", StringComparison.OrdinalIgnoreCase))
-        {
+
+        if (actionSpan.StartsWith("move", StringComparison.OrdinalIgnoreCase))
             return await HandleMoveAsync(roomId, command.UserId, command.GetInt("tokenIndex"));
-        }
 
         return GameActionResult.Error($"Unknown action: {command.Action}");
     }
@@ -61,36 +56,40 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         var events = new List<GameEvent> { new("TurnTimeout", new { Player = engine.State.CurrentPlayer }) };
 
         if (engine.State.LastDiceRoll == 0)
-        {
             if (engine.TryRollDice(out var res))
-                events.Add(new("DiceRolled", new { Value = res.DiceValue, Player = engine.State.CurrentPlayer, AutoPlay = true }));
-        }
+                events.Add(new GameEvent("DiceRolled",
+                    new { Value = res.DiceValue, Player = engine.State.CurrentPlayer, AutoPlay = true }));
 
         int mask = engine.GetLegalMovesMask();
         if (mask != 0)
         {
-            int tokenToMove = (mask & 1) != 0 ? 0 : (mask & 2) != 0 ? 1 : (mask & 4) != 0 ? 2 : 3;
+            var tokenToMove = (mask & 1) != 0 ? 0 : (mask & 2) != 0 ? 1 : (mask & 4) != 0 ? 2 : 3;
 
             if (engine.TryMoveToken(tokenToMove, out var res))
             {
-                events.Add(new("TokenMoved", new { Player = ctx.State.CurrentPlayer, TokenIndex = tokenToMove, NewPosition = res.NewPos, AutoPlay = true }));
+                events.Add(new GameEvent("TokenMoved",
+                    new
+                    {
+                        Player = ctx.State.CurrentPlayer, TokenIndex = tokenToMove, NewPosition = res.NewPos,
+                        AutoPlay = true
+                    }));
                 ProcessEvents(events, res, ctx.State.CurrentPlayer);
             }
         }
-        
+
         if (engine.State.TurnId != ctx.State.TurnId || engine.State.CurrentPlayer != ctx.State.CurrentPlayer)
-             events.Add(new("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
+            events.Add(new GameEvent("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
 
         var newMeta = ctx.Meta with { TurnStartedAt = DateTimeOffset.UtcNow };
         await _repository.SaveAsync(roomId, engine.State, newMeta);
 
         var finalState = engine.State;
-        return new GameActionResult 
-        { 
-            Success = true, 
-            ShouldBroadcast = true, 
-            Events = events, 
-            NewState = MapToDto(ref finalState, newMeta) 
+        return new GameActionResult
+        {
+            Success = true,
+            ShouldBroadcast = true,
+            Events = events,
+            NewState = MapToDto(ref finalState, newMeta)
         };
     }
 
@@ -106,7 +105,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
 
         var engine = new LudoEngine(_diceRoller) { State = ctx.State };
         int mask = engine.GetLegalMovesMask();
-        
+
         if (mask == 0) return EmptyActions;
 
         var list = new List<string>(4);
@@ -123,13 +122,13 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         if (ctx == null) return null;
 
         var localState = ctx.State;
-        return new GameStateResponse 
-        { 
-            RoomId = roomId, 
-            GameType = GameType, 
-            Meta = ctx.Meta, 
-            State = MapToDto(ref localState, ctx.Meta), 
-            LegalMoves = [] 
+        return new GameStateResponse
+        {
+            RoomId = roomId,
+            GameType = GameType,
+            Meta = ctx.Meta,
+            State = MapToDto(ref localState, ctx.Meta),
+            LegalMoves = []
         };
     }
 
@@ -143,15 +142,16 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         if (!engine.TryRollDice(out var res)) return GameActionResult.Error($"Roll failed: {res.Status}");
 
         var events = new List<GameEvent> { new("DiceRolled", new { Value = res.DiceValue, Player = seat }) };
-        
+
         if (res.Status.HasFlag(LudoStatus.TurnPassed) || res.Status.HasFlag(LudoStatus.ForfeitTurn))
-            events.Add(new("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
+            events.Add(new GameEvent("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
 
         var newMeta = ctx.Meta with { TurnStartedAt = DateTimeOffset.UtcNow };
         await _repository.SaveAsync(roomId, engine.State, newMeta);
 
         var finalState = engine.State;
-        return new GameActionResult { Success = true, ShouldBroadcast = true, Events = events, NewState = MapToDto(ref finalState, newMeta) };
+        return new GameActionResult
+            { Success = true, ShouldBroadcast = true, Events = events, NewState = MapToDto(ref finalState, newMeta) };
     }
 
     private async Task<GameActionResult> HandleMoveAsync(string roomId, string userId, int tIdx)
@@ -163,25 +163,25 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         var engine = new LudoEngine(_diceRoller) { State = ctx.State };
         if (!engine.TryMoveToken(tIdx, out var res)) return GameActionResult.Error($"Move failed: {res.Status}");
 
-        var events = new List<GameEvent> { new("TokenMoved", new { Player = seat, TokenIndex = tIdx, NewPosition = res.NewPos }) };
+        var events = new List<GameEvent>
+            { new("TokenMoved", new { Player = seat, TokenIndex = tIdx, NewPosition = res.NewPos }) };
         ProcessEvents(events, res, seat);
-        
+
         if (!res.Status.HasFlag(LudoStatus.ExtraTurn) || res.Status.HasFlag(LudoStatus.ErrorGameEnded))
-            events.Add(new("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
+            events.Add(new GameEvent("TurnChanged", new { NewPlayer = engine.State.CurrentPlayer }));
 
         var newMeta = ctx.Meta with { TurnStartedAt = DateTimeOffset.UtcNow };
         await _repository.SaveAsync(roomId, engine.State, newMeta);
 
         var finalState = engine.State;
         var stateDto = MapToDto(ref finalState, newMeta);
-        
-        // If game ended, include archival info
+
         if (res.Status.HasFlag(LudoStatus.ErrorGameEnded))
         {
             var winnerRanking = GetWinnerRanking(ref finalState, ctx.Meta);
             var winnerUserId = winnerRanking.Count > 0 ? winnerRanking[0] : null;
             var totalPot = ctx.Meta.EntryFee * ctx.Meta.PlayerSeats.Count;
-            
+
             return GameActionResult.GameOver(
                 stateDto,
                 new GameEndedInfo(
@@ -190,64 +190,67 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
                     ctx.Meta.PlayerSeats,
                     winnerUserId,
                     totalPot,
-                    ctx.Meta.TurnStartedAt, // Use as game start approximation
-                    winnerRanking),
+                    ctx.Meta.TurnStartedAt, winnerRanking),
                 events.ToArray());
         }
-        
+
         return new GameActionResult { Success = true, ShouldBroadcast = true, Events = events, NewState = stateDto };
     }
-    
+
     private List<string> GetWinnerRanking(ref LudoState state, GameRoomMeta meta)
     {
         var ranking = new List<string>();
         var seatToUser = meta.PlayerSeats.ToDictionary(kvp => kvp.Value, kvp => kvp.Key);
-        
-        for (int i = 0; i < 4; i++)
+
+        for (var i = 0; i < 4; i++)
         {
             var seatIndex = (int)state.Winners[i];
-            if (seatIndex != 255 && seatToUser.TryGetValue(seatIndex, out var userId))
-            {
-                ranking.Add(userId);
-            }
+            if (seatIndex != 255 && seatToUser.TryGetValue(seatIndex, out var userId)) ranking.Add(userId);
         }
-        
+
         return ranking;
     }
 
     private bool ValidateTurn(GameContext<LudoState> ctx, string userId, out int seat)
     {
         seat = -1;
-        if (userId == GameCoreConstants.AdminUserId || userId == GameCoreConstants.SystemUserId) { seat = ctx.State.CurrentPlayer; return true; }
+        if (userId == GameCoreConstants.AdminUserId || userId == GameCoreConstants.SystemUserId)
+        {
+            seat = ctx.State.CurrentPlayer;
+            return true;
+        }
+
         return ctx.Meta.PlayerSeats.TryGetValue(userId, out seat) && seat == ctx.State.CurrentPlayer;
     }
 
     private void ProcessEvents(List<GameEvent> list, MoveResult res, int p)
     {
-        if (res.Status.HasFlag(LudoStatus.CapturedOpponent)) 
-            list.Add(new("TokenCaptured", new { CapturedPlayer = res.CapturedPid, CapturedToken = res.CapturedTid }));
-        
-        if (res.Status.HasFlag(LudoStatus.PlayerFinished)) 
-            list.Add(new("PlayerFinished", new { Player = p }));
-        
-        if (res.Status.HasFlag(LudoStatus.ErrorGameEnded)) 
-            list.Add(new("GameEnded", new { }));
+        if (res.Status.HasFlag(LudoStatus.CapturedOpponent))
+            list.Add(new GameEvent("TokenCaptured",
+                new { CapturedPlayer = res.CapturedPid, CapturedToken = res.CapturedTid }));
+
+        if (res.Status.HasFlag(LudoStatus.PlayerFinished))
+            list.Add(new GameEvent("PlayerFinished", new { Player = p }));
+
+        if (res.Status.HasFlag(LudoStatus.ErrorGameEnded))
+            list.Add(new GameEvent("GameEnded", new { }));
     }
 
     private LudoStateDto MapToDto(ref LudoState s, GameRoomMeta m)
     {
         var tokens = new byte[16];
         ((ReadOnlySpan<byte>)s.Tokens).CopyTo(tokens);
-        
-        uint wPacked = s.Winners[0] | ((uint)s.Winners[1] << 8) | ((uint)s.Winners[2] << 16) | ((uint)s.Winners[3] << 24);
 
-        // Calculate legal moves mask without needing dice roller (it's only used for rolling, not move calculation)
+        var wPacked = s.Winners[0] | ((uint)s.Winners[1] << 8) | ((uint)s.Winners[2] << 16) |
+                      ((uint)s.Winners[3] << 24);
+
         var engine = new LudoEngine(_diceRoller) { State = s };
-        
+
         return new LudoStateDto
         {
             CurrentPlayer = s.CurrentPlayer, LastDiceRoll = s.LastDiceRoll, TurnId = s.TurnId,
-            ConsecutiveSixes = s.ConsecutiveSixes, TurnStartedAt = m.TurnStartedAt, TurnTimeoutSeconds = TurnTimeoutSeconds,
+            ConsecutiveSixes = s.ConsecutiveSixes, TurnStartedAt = m.TurnStartedAt,
+            TurnTimeoutSeconds = TurnTimeoutSeconds,
             Tokens = tokens, ActiveSeatsMask = s.ActiveSeats, FinishedMask = s.FinishedMask, WinnersPacked = wPacked,
             IsGameOver = s.IsGameOver(),
             LegalMovesMask = engine.GetLegalMovesMask()

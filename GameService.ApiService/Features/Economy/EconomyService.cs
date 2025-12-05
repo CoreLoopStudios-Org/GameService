@@ -1,3 +1,5 @@
+using System.Data;
+using System.Text.Json;
 using GameService.ServiceDefaults;
 using GameService.ServiceDefaults.Configuration;
 using GameService.ServiceDefaults.Data;
@@ -11,33 +13,33 @@ public interface IEconomyService
 {
     Task<TransactionResult> ProcessTransactionAsync(string userId, long amount, string? referenceId = null,
         string? idempotencyKey = null);
-    
+
     /// <summary>
-    /// Deduct entry fee from player when joining a paid game.
-    /// Returns a reservation that can be committed or refunded.
+    ///     Deduct entry fee from player when joining a paid game.
+    ///     Returns a reservation that can be committed or refunded.
     /// </summary>
     Task<EntryFeeReservation> ReserveEntryFeeAsync(string userId, long entryFee, string roomId);
-    
+
     /// <summary>
-    /// Commit a reserved entry fee (player successfully joined room)
+    ///     Commit a reserved entry fee (player successfully joined room)
     /// </summary>
     Task CommitEntryFeeAsync(EntryFeeReservation reservation);
-    
+
     /// <summary>
-    /// Refund a reserved entry fee (player failed to join room)
+    ///     Refund a reserved entry fee (player failed to join room)
     /// </summary>
     Task RefundEntryFeeAsync(EntryFeeReservation reservation);
-    
+
     /// <summary>
-    /// Award winnings to player(s) when game ends
+    ///     Award winnings to player(s) when game ends
     /// </summary>
     Task<TransactionResult> AwardWinningsAsync(string userId, long amount, string roomId);
-    
+
     /// <summary>
-    /// Process end-of-game payouts for all players
+    ///     Process end-of-game payouts for all players
     /// </summary>
-    Task<GamePayoutResult> ProcessGamePayoutsAsync(string roomId, string gameType, long totalPot, 
-        IReadOnlyDictionary<string, int> playerSeats, string? winnerUserId, 
+    Task<GamePayoutResult> ProcessGamePayoutsAsync(string roomId, string gameType, long totalPot,
+        IReadOnlyDictionary<string, int> playerSeats, string? winnerUserId,
         IReadOnlyList<string>? winnerRanking = null);
 }
 
@@ -58,7 +60,7 @@ public record TransactionResult(
     string? ErrorMessage = null);
 
 /// <summary>
-/// Represents a reserved entry fee that can be committed or refunded
+///     Represents a reserved entry fee that can be committed or refunded
 /// </summary>
 public record EntryFeeReservation(
     bool Success,
@@ -70,7 +72,7 @@ public record EntryFeeReservation(
     string? ErrorMessage = null);
 
 /// <summary>
-/// Result of processing game payouts
+///     Result of processing game payouts
 /// </summary>
 public record GamePayoutResult(
     bool Success,
@@ -83,8 +85,8 @@ public class EconomyService(
     IOptions<GameServiceOptions> options,
     ILogger<EconomyService> logger) : IEconomyService
 {
-    private readonly long _initialCoins = options.Value.Economy.InitialCoins;
     private const int MaxRetryAttempts = 3;
+    private readonly long _initialCoins = options.Value.Economy.InitialCoins;
 
     public async Task<TransactionResult> ProcessTransactionAsync(string userId, long amount, string? referenceId = null,
         string? idempotencyKey = null)
@@ -96,13 +98,11 @@ public class EconomyService(
 
         return await strategy.ExecuteAsync(async () =>
         {
-            // Retry loop for optimistic concurrency conflicts
-            for (int attempt = 0; attempt < MaxRetryAttempts; attempt++)
+            for (var attempt = 0; attempt < MaxRetryAttempts; attempt++)
             {
-                using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead);
+                using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead);
                 try
                 {
-                    // Check idempotency first
                     if (!string.IsNullOrEmpty(idempotencyKey))
                     {
                         var existing = await db.WalletTransactions
@@ -118,8 +118,6 @@ public class EconomyService(
                         }
                     }
 
-                    // Lock the row for update to prevent race conditions
-                    // Using raw SQL for SELECT FOR UPDATE (PostgreSQL specific)
                     var profile = await db.PlayerProfiles
                         .FromSqlRaw(
                             "SELECT * FROM \"PlayerProfiles\" WHERE \"UserId\" = {0} AND \"IsDeleted\" = false FOR UPDATE",
@@ -130,40 +128,36 @@ public class EconomyService(
 
                     if (profile != null)
                     {
-                        // Check sufficient funds for debit
                         if (amount < 0 && profile.Coins + amount < 0)
-                        {
-                            return new TransactionResult(false, profile.Coins, 
+                            return new TransactionResult(false, profile.Coins,
                                 TransactionErrorType.InsufficientFunds, "Insufficient funds");
-                        }
 
-                        // Update with optimistic concurrency check
                         var currentVersion = profile.Version;
                         profile.Coins += amount;
                         profile.Version = Guid.NewGuid();
-                        
+
                         var rows = await db.SaveChangesAsync();
                         if (rows == 0)
                         {
-                            // Concurrency conflict - retry
                             await transaction.RollbackAsync();
                             if (attempt < MaxRetryAttempts - 1)
                             {
                                 await Task.Delay(Random.Shared.Next(10, 50));
                                 continue;
                             }
-                            return new TransactionResult(false, 0, 
+
+                            return new TransactionResult(false, 0,
                                 TransactionErrorType.ConcurrencyConflict, "Concurrent modification detected");
                         }
-                        
+
                         newBalance = profile.Coins;
                     }
                     else
                     {
-                        // Create new profile
                         var user = await db.Users.FindAsync(userId);
                         if (user is null)
-                            return new TransactionResult(false, 0, TransactionErrorType.Unknown, "User account not found.");
+                            return new TransactionResult(false, 0, TransactionErrorType.Unknown,
+                                "User account not found.");
 
                         var initialCoins = _initialCoins + amount;
                         if (initialCoins < 0)
@@ -179,7 +173,6 @@ public class EconomyService(
                     var txType = amount > 0 ? "Credit" : "Debit";
                     var description = amount > 0 ? "Deposit/Win" : "Withdrawal/Entry Fee";
 
-                    // Create wallet transaction record
                     var ledgerEntry = new WalletTransaction
                     {
                         UserId = userId,
@@ -192,33 +185,29 @@ public class EconomyService(
                         CreatedAt = DateTimeOffset.UtcNow
                     };
                     db.WalletTransactions.Add(ledgerEntry);
-                    
-                    // Add outbox message for reliable event publishing
+
                     var outboxMessage = new OutboxMessage
                     {
                         EventType = "PlayerUpdated",
-                        Payload = System.Text.Json.JsonSerializer.Serialize(new PlayerUpdatedMessage(
+                        Payload = JsonSerializer.Serialize(new PlayerUpdatedMessage(
                             userId, newBalance, null, null)),
                         CreatedAt = DateTimeOffset.UtcNow
                     };
                     db.OutboxMessages.Add(outboxMessage);
-                    
+
                     await db.SaveChangesAsync();
                     await transaction.CommitAsync();
 
-                    // Try to publish immediately (best effort - outbox processor will retry if this fails)
                     try
                     {
                         await publisher.PublishPlayerUpdatedAsync(new PlayerUpdatedMessage(
                             userId, newBalance, null, null));
-                        
-                        // Mark as processed if publish succeeded
+
                         outboxMessage.ProcessedAt = DateTimeOffset.UtcNow;
                         await db.SaveChangesAsync();
                     }
                     catch (Exception pubEx)
                     {
-                        // Outbox processor will retry - this is fine
                         logger.LogDebug(pubEx, "Immediate publish failed for user {UserId}, outbox will retry", userId);
                     }
 
@@ -232,7 +221,8 @@ public class EconomyService(
                         await Task.Delay(Random.Shared.Next(10, 50));
                         continue;
                     }
-                    return new TransactionResult(false, 0, 
+
+                    return new TransactionResult(false, 0,
                         TransactionErrorType.ConcurrencyConflict, "Concurrent modification detected");
                 }
                 catch (Exception ex)
@@ -242,79 +232,71 @@ public class EconomyService(
                     return new TransactionResult(false, 0, TransactionErrorType.Unknown, "Transaction failed");
                 }
             }
-            
+
             return new TransactionResult(false, 0, TransactionErrorType.ConcurrencyConflict, "Max retries exceeded");
         });
     }
 
     public async Task<EntryFeeReservation> ReserveEntryFeeAsync(string userId, long entryFee, string roomId)
     {
-        if (entryFee <= 0) 
+        if (entryFee <= 0)
             return new EntryFeeReservation(true, userId, 0, roomId, null, 0);
-        
+
         var reservationId = $"reserve:{roomId}:{userId}:{Guid.NewGuid():N}";
         var result = await ProcessTransactionAsync(userId, -entryFee, $"ROOM:{roomId}:ENTRY_RESERVE", reservationId);
-        
+
         if (!result.Success)
-        {
-            return new EntryFeeReservation(false, userId, entryFee, roomId, null, result.NewBalance, 
+            return new EntryFeeReservation(false, userId, entryFee, roomId, null, result.NewBalance,
                 result.ErrorMessage ?? "Insufficient funds");
-        }
-        
+
         return new EntryFeeReservation(true, userId, entryFee, roomId, reservationId, result.NewBalance);
     }
 
     public async Task CommitEntryFeeAsync(EntryFeeReservation reservation)
     {
         if (!reservation.Success || reservation.Amount <= 0) return;
-        
-        // Update the transaction description to mark as committed
+
         await db.WalletTransactions
             .Where(t => t.IdempotencyKey == reservation.ReservationId)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(t => t.Description, "Entry Fee (Confirmed)")
                 .SetProperty(t => t.ReferenceId, $"ROOM:{reservation.RoomId}:ENTRY"));
-        
-        logger.LogInformation("Entry fee committed: User={UserId}, Room={RoomId}, Amount={Amount}", 
+
+        logger.LogInformation("Entry fee committed: User={UserId}, Room={RoomId}, Amount={Amount}",
             reservation.UserId, reservation.RoomId, reservation.Amount);
     }
 
     public async Task RefundEntryFeeAsync(EntryFeeReservation reservation)
     {
         if (!reservation.Success || reservation.Amount <= 0) return;
-        
+
         var refundKey = $"refund:{reservation.ReservationId}";
         var result = await ProcessTransactionAsync(
-            reservation.UserId, 
-            reservation.Amount,  // Credit back the amount
-            $"ROOM:{reservation.RoomId}:ENTRY_REFUND", 
+            reservation.UserId,
+            reservation.Amount, $"ROOM:{reservation.RoomId}:ENTRY_REFUND",
             refundKey);
-        
+
         if (result.Success)
-        {
-            logger.LogInformation("Entry fee refunded: User={UserId}, Room={RoomId}, Amount={Amount}", 
+            logger.LogInformation("Entry fee refunded: User={UserId}, Room={RoomId}, Amount={Amount}",
                 reservation.UserId, reservation.RoomId, reservation.Amount);
-        }
         else
-        {
-            logger.LogError("Failed to refund entry fee: User={UserId}, Room={RoomId}, Amount={Amount}, Error={Error}", 
+            logger.LogError("Failed to refund entry fee: User={UserId}, Room={RoomId}, Amount={Amount}, Error={Error}",
                 reservation.UserId, reservation.RoomId, reservation.Amount, result.ErrorMessage);
-        }
     }
 
     public async Task<TransactionResult> AwardWinningsAsync(string userId, long amount, string roomId)
     {
         if (amount <= 0) return new TransactionResult(true, 0);
-        
+
         var idempotencyKey = $"win:{roomId}:{userId}";
         return await ProcessTransactionAsync(userId, amount, $"ROOM:{roomId}:WIN", idempotencyKey);
     }
 
     public async Task<GamePayoutResult> ProcessGamePayoutsAsync(
-        string roomId, 
-        string gameType, 
+        string roomId,
+        string gameType,
         long totalPot,
-        IReadOnlyDictionary<string, int> playerSeats, 
+        IReadOnlyDictionary<string, int> playerSeats,
         string? winnerUserId,
         IReadOnlyList<string>? winnerRanking = null)
     {
@@ -323,8 +305,7 @@ public class EconomyService(
 
         var payouts = new Dictionary<string, long>();
         var playerCount = playerSeats.Count;
-        
-        // Calculate house rake (3%)
+
         var rake = (long)(totalPot * 0.03);
         var prizePool = totalPot - rake;
 
@@ -332,33 +313,24 @@ public class EconomyService(
         {
             if (winnerRanking != null && winnerRanking.Count > 0)
             {
-                // Multi-winner payout distribution
                 payouts = CalculateRankedPayouts(winnerRanking, prizePool);
             }
             else if (!string.IsNullOrEmpty(winnerUserId))
             {
-                // Single winner takes all (minus rake)
                 payouts[winnerUserId] = prizePool;
             }
             else
             {
-                // No winner - refund all players (minus rake per player)
                 var refundPerPlayer = prizePool / playerCount;
-                foreach (var userId in playerSeats.Keys)
-                {
-                    payouts[userId] = refundPerPlayer;
-                }
+                foreach (var userId in playerSeats.Keys) payouts[userId] = refundPerPlayer;
             }
 
-            // Process all payouts
             foreach (var (userId, amount) in payouts)
             {
                 var result = await AwardWinningsAsync(userId, amount, roomId);
                 if (!result.Success)
-                {
                     logger.LogError("Failed to pay {Amount} to {UserId} for room {RoomId}: {Error}",
                         amount, userId, roomId, result.ErrorMessage);
-                }
             }
 
             logger.LogInformation(
@@ -377,8 +349,7 @@ public class EconomyService(
     private static Dictionary<string, long> CalculateRankedPayouts(IReadOnlyList<string> ranking, long prizePool)
     {
         var payouts = new Dictionary<string, long>();
-        
-        // Standard payout structure based on player count
+
         var payoutPercentages = ranking.Count switch
         {
             1 => new[] { 1.0 },
@@ -388,13 +359,10 @@ public class EconomyService(
             _ => CalculatePayoutPercentages(ranking.Count)
         };
 
-        for (int i = 0; i < ranking.Count && i < payoutPercentages.Length; i++)
+        for (var i = 0; i < ranking.Count && i < payoutPercentages.Length; i++)
         {
             var payout = (long)(prizePool * payoutPercentages[i]);
-            if (payout > 0)
-            {
-                payouts[ranking[i]] = payout;
-            }
+            if (payout > 0) payouts[ranking[i]] = payout;
         }
 
         return payouts;
@@ -402,23 +370,18 @@ public class EconomyService(
 
     private static double[] CalculatePayoutPercentages(int playerCount)
     {
-        // Top 50% of players get paid
         var paidPositions = Math.Max(1, playerCount / 2);
         var percentages = new double[paidPositions];
-        
+
         double total = 0;
-        for (int i = 0; i < paidPositions; i++)
+        for (var i = 0; i < paidPositions; i++)
         {
-            percentages[i] = 1.0 / (i + 1); // Harmonic series
+            percentages[i] = 1.0 / (i + 1);
             total += percentages[i];
         }
-        
-        // Normalize to sum to 1.0
-        for (int i = 0; i < paidPositions; i++)
-        {
-            percentages[i] /= total;
-        }
-        
+
+        for (var i = 0; i < paidPositions; i++) percentages[i] /= total;
+
         return percentages;
     }
 }

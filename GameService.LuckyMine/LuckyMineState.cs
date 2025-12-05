@@ -11,7 +11,7 @@ public struct LuckyMineState
     [FieldOffset(24)] public ulong RevealedMask1;
 
     [FieldOffset(32)] public int RevealedSafeCount;
-    
+
     [FieldOffset(36)] public byte TotalMines;
     [FieldOffset(37)] public byte TotalTiles;
     [FieldOffset(38)] public byte Status;

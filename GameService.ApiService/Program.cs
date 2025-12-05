@@ -20,29 +20,26 @@ using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.Security;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-// Configure PostgreSQL with connection pooling
-var gameServiceOptions = builder.Configuration.GetSection(GameServiceOptions.SectionName).Get<GameServiceOptions>() ?? new GameServiceOptions();
+var gameServiceOptions = builder.Configuration.GetSection(GameServiceOptions.SectionName).Get<GameServiceOptions>() ??
+                         new GameServiceOptions();
 var dbOptions = gameServiceOptions.Database;
 
 builder.AddNpgsqlDbContext<GameDbContext>("postgresdb", configureDbContextOptions: options =>
 {
-    // Connection pooling is configured via connection string parameters
-    // These are applied by Aspire's AddNpgsqlDbContext, but we can customize further
     options.UseNpgsql(npgsqlOptions =>
     {
         npgsqlOptions.EnableRetryOnFailure(
-            maxRetryCount: 3,
-            maxRetryDelay: TimeSpan.FromSeconds(5),
-            errorCodesToAdd: null);
+            3,
+            TimeSpan.FromSeconds(5),
+            null);
         npgsqlOptions.CommandTimeout(dbOptions.CommandTimeout);
     });
-    
+
     if (builder.Environment.IsDevelopment())
     {
         options.EnableSensitiveDataLogging();
@@ -55,7 +52,6 @@ builder.AddRedisClient("cache");
 builder.Services.Configure<GameServiceOptions>(builder.Configuration.GetSection(GameServiceOptions.SectionName));
 builder.Services.Configure<AdminSettings>(builder.Configuration.GetSection(AdminSettings.SectionName));
 
-// Add security validation
 builder.Services.AddSecurityValidation();
 
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -85,22 +81,15 @@ builder.Services.AddCors(options =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    
+
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
     {
-        // Skip rate limiting for admin endpoints (they use API key auth)
-        if (httpContext.Request.Path.StartsWithSegments("/admin"))
-        {
-            return RateLimitPartition.GetNoLimiter("admin");
-        }
-        
-        // Skip rate limiting for health checks
-        if (httpContext.Request.Path.StartsWithSegments("/health") || 
+        if (httpContext.Request.Path.StartsWithSegments("/admin")) return RateLimitPartition.GetNoLimiter("admin");
+
+        if (httpContext.Request.Path.StartsWithSegments("/health") ||
             httpContext.Request.Path.StartsWithSegments("/alive"))
-        {
             return RateLimitPartition.GetNoLimiter("health");
-        }
-        
+
         return RateLimitPartition.GetFixedWindowLimiter(
             httpContext.User.Identity?.Name ?? httpContext.Request.Headers.Host.ToString(),
             _ => new FixedWindowRateLimiterOptions
@@ -157,7 +146,6 @@ builder.Services.AddSignalR()
 
 var app = builder.Build();
 
-// Validate security settings before starting
 app.ValidateSecurity();
 
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
@@ -167,7 +155,6 @@ if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 }
 else
 {
-    // Production: enforce HTTPS if configured
     if (gameServiceOptions.Security.RequireHttpsInProduction)
     {
         app.UseHttpsRedirection();
@@ -180,7 +167,6 @@ app.UseRateLimiter();
 
 app.UseAuthentication();
 
-// API Key authentication middleware (proper implementation)
 app.UseApiKeyAuthentication();
 
 app.UseAuthorization();
@@ -189,7 +175,7 @@ app.MapAuthEndpoints();
 app.MapPlayerEndpoints();
 app.MapEconomyEndpoints();
 app.MapAdminEndpoints();
-GameCatalogEndpoints.MapGameCatalogEndpoints(app);
+app.MapGameCatalogEndpoints();
 
 app.MapHub<GameHub>("/hubs/game");
 

@@ -9,15 +9,15 @@ using Microsoft.Extensions.Options;
 namespace GameService.ServiceDefaults.Security;
 
 /// <summary>
-/// Validates security configuration on startup.
-/// Blocks startup in production if critical security settings are misconfigured.
+///     Validates security configuration on startup.
+///     Blocks startup in production if critical security settings are misconfigured.
 /// </summary>
 public sealed class SecurityValidator
 {
-    private readonly ILogger<SecurityValidator> _logger;
+    private readonly AdminSettings _adminSettings;
     private readonly IHostEnvironment _environment;
     private readonly GameServiceOptions _gameOptions;
-    private readonly AdminSettings _adminSettings;
+    private readonly ILogger<SecurityValidator> _logger;
 
     public SecurityValidator(
         ILogger<SecurityValidator> logger,
@@ -32,7 +32,7 @@ public sealed class SecurityValidator
     }
 
     /// <summary>
-    /// Validates all security settings. Throws in production if critical issues found.
+    ///     Validates all security settings. Throws in production if critical issues found.
     /// </summary>
     public void Validate()
     {
@@ -43,31 +43,19 @@ public sealed class SecurityValidator
         ValidateAdminSeed(issues, warnings);
         ValidatePasswordPolicy(warnings);
 
-        // Log warnings
-        foreach (var warning in warnings)
-        {
-            _logger.LogWarning("⚠️ Security Warning: {Warning}", warning);
-        }
+        foreach (var warning in warnings) _logger.LogWarning("⚠️ Security Warning: {Warning}", warning);
 
-        // In production, critical issues block startup
         if (issues.Count > 0)
         {
-            foreach (var issue in issues)
-            {
-                _logger.LogCritical("🚨 Security Issue: {Issue}", issue);
-            }
+            foreach (var issue in issues) _logger.LogCritical("🚨 Security Issue: {Issue}", issue);
 
             if (!_environment.IsDevelopment())
-            {
                 throw new InvalidOperationException(
                     $"Security validation failed with {issues.Count} critical issue(s). " +
                     $"Fix these before deploying to production:\n• " + string.Join("\n• ", issues));
-            }
-            else
-            {
-                _logger.LogWarning("🔧 Running in Development - security issues are warnings only. " +
-                                   "These WILL block startup in production.");
-            }
+
+            _logger.LogWarning("🔧 Running in Development - security issues are warnings only. " +
+                               "These WILL block startup in production.");
         }
         else
         {
@@ -83,17 +71,13 @@ public sealed class SecurityValidator
         if (string.IsNullOrEmpty(apiKey))
         {
             if (!_environment.IsDevelopment())
-            {
-                issues.Add("AdminSettings:ApiKey is not configured. Set via environment variable: AdminSettings__ApiKey");
-            }
+                issues.Add(
+                    "AdminSettings:ApiKey is not configured. Set via environment variable: AdminSettings__ApiKey");
             else
-            {
                 warnings.Add("AdminSettings:ApiKey is not set. Admin endpoints will be inaccessible.");
-            }
             return;
         }
 
-        // Check for weak/default keys
         var weakKeys = new[]
         {
             "DevOnlyAdminKey-ChangeInProduction!",
@@ -106,27 +90,18 @@ public sealed class SecurityValidator
         };
 
         if (weakKeys.Any(weak => apiKey.Contains(weak, StringComparison.OrdinalIgnoreCase)))
-        {
             issues.Add("AdminSettings:ApiKey contains a weak/default value. Generate a strong random key.");
-        }
 
         if (apiKey.Length < minLength)
         {
             if (_gameOptions.Security.EnforceApiKeyValidation)
-            {
                 issues.Add($"AdminSettings:ApiKey must be at least {minLength} characters. Current: {apiKey.Length}");
-            }
             else
-            {
                 warnings.Add($"AdminSettings:ApiKey is shorter than recommended ({apiKey.Length} < {minLength})");
-            }
         }
 
-        // Check entropy (simple heuristic: should have mixed case, numbers, and special chars)
         if (!HasSufficientEntropy(apiKey))
-        {
             warnings.Add("AdminSettings:ApiKey has low entropy. Consider using a cryptographically random value.");
-        }
     }
 
     private void ValidateAdminSeed(List<string> issues, List<string> warnings)
@@ -134,19 +109,14 @@ public sealed class SecurityValidator
         var email = _gameOptions.AdminSeed.Email;
         var password = _gameOptions.AdminSeed.Password;
 
-        // In production, these should be set via environment variables
         if (!_environment.IsDevelopment())
-        {
             if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
             {
-                // This is OK - admin will be created manually
                 _logger.LogInformation("Admin seed credentials not configured. " +
                                        "Create admin account via secure channel.");
                 return;
             }
-        }
 
-        // Check for weak default passwords
         var weakPasswords = new[]
         {
             "AdminPass123!",
@@ -159,20 +129,14 @@ public sealed class SecurityValidator
         if (weakPasswords.Any(weak => password.Equals(weak, StringComparison.OrdinalIgnoreCase)))
         {
             if (!_environment.IsDevelopment())
-            {
                 issues.Add("GameService:AdminSeed:Password uses a weak/default value. Generate a strong password.");
-            }
             else
-            {
                 warnings.Add("Admin seed password is weak. Change before production.");
-            }
         }
     }
 
     private void ValidatePasswordPolicy(List<string> warnings)
     {
-        // These are just warnings - Identity has its own validation
-        // But we log if settings seem too permissive for a financial gaming platform
         warnings.Add("Consider enabling 2FA for admin accounts in production.");
     }
 
@@ -189,30 +153,27 @@ public sealed class SecurityValidator
     }
 
     /// <summary>
-    /// Generates a cryptographically secure API key
+    ///     Generates a cryptographically secure API key
     /// </summary>
     public static string GenerateSecureApiKey(int length = 64)
     {
         const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
         var bytes = RandomNumberGenerator.GetBytes(length);
         var result = new char[length];
-        
-        for (int i = 0; i < length; i++)
-        {
-            result[i] = chars[bytes[i] % chars.Length];
-        }
-        
+
+        for (var i = 0; i < length; i++) result[i] = chars[bytes[i] % chars.Length];
+
         return new string(result);
     }
 }
 
 /// <summary>
-/// Extension methods for security validation
+///     Extension methods for security validation
 /// </summary>
 public static class SecurityValidatorExtensions
 {
     /// <summary>
-    /// Adds security validation services
+    ///     Adds security validation services
     /// </summary>
     public static IServiceCollection AddSecurityValidation(this IServiceCollection services)
     {
@@ -221,7 +182,7 @@ public static class SecurityValidatorExtensions
     }
 
     /// <summary>
-    /// Validates security settings on startup. Call after building the app.
+    ///     Validates security settings on startup. Call after building the app.
     /// </summary>
     public static WebApplication ValidateSecurity(this WebApplication app)
     {

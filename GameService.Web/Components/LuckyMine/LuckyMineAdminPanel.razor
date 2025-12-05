@@ -16,7 +16,8 @@
                 @if (Dto.Status == "Active" && Dto.RevealedSafeCount > 0)
                 {
                     <div class="mt-2">
-                        <small class="text-muted">Next tile win: <strong class="text-success">@Dto.NextTileWinnings</strong></small>
+                        <small class="text-muted">Next tile win: <strong
+                                class="text-success">@Dto.NextTileWinnings</strong></small>
                     </div>
                 }
             </div>
@@ -34,13 +35,25 @@
                     <div class="tile @bgClass shadow-sm" title="Index @idx @(isMine ? "[MINE]" : "")">
                         @if (isRevealed)
                         {
-                            if (isMine) { <i class="bi bi-radioactive fs-5"></i> }
-                            else { <span class="fw-bold small">✓</span> }
+                            if (isMine)
+                            {
+                                <i class="bi bi-radioactive fs-5"></i>
+                            }
+                            else
+                            {
+                                <span class="fw-bold small">✓</span>
+                            }
                         }
                         else
                         {
-                            if (isMine) { <i class="bi bi-bomb-fill text-danger opacity-50"></i> }
-                            else { <span class="small text-muted opacity-25">@idx</span> }
+                            if (isMine)
+                            {
+                                <i class="bi bi-bomb-fill text-danger opacity-50"></i>
+                            }
+                            else
+                            {
+                                <span class="small text-muted opacity-25">@idx</span>
+                            }
                         }
                     </div>
                 }
@@ -50,19 +63,36 @@
 </div>
 
 <style>
-    .tile { width: 40px; height: 40px; border-radius: 6px; border: 1px solid; display: flex; align-items: center; justify-content: center; cursor: default; transition: all 0.2s; }
+    .tile {
+        width: 40px;
+        height: 40px;
+        border-radius: 6px;
+        border: 1px solid;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: default;
+        transition: all 0.2s;
+    }
 </style>
 
 @code {
     [Parameter] public LuckyMineFullDto? Dto { get; set; }
 
-    private bool IsBitSet(ulong mask, int bit) => (mask & (1UL << bit)) != 0;
-
-    private string GetStatusBadgeClass() => Dto?.Status switch
+    private bool IsBitSet(ulong mask, int bit)
     {
-        "Active" => "bg-primary",
-        "CashedOut" => "bg-success",
-        "HitMine" => "bg-danger",
-        _ => "bg-secondary"
-    };
+        return (mask & (1UL << bit)) != 0;
+    }
+
+    private string GetStatusBadgeClass()
+    {
+        return Dto?.Status switch
+        {
+            "Active" => "bg-primary",
+            "CashedOut" => "bg-success",
+            "HitMine" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
 }

@@ -16,9 +16,8 @@ public sealed class LudoModule : IGameModule
 
     public void RegisterServices(IServiceCollection services)
     {
-        // Register Ludo-specific options from configuration
         services.AddOptions<LudoOptions>()
-            .Configure<IConfiguration>((opts, config) => 
+            .Configure<IConfiguration>((opts, config) =>
                 config.GetSection(LudoOptions.SectionName).Bind(opts));
 
         services.AddKeyedSingleton<IGameEngine, LudoGameEngine>(GameName);
@@ -29,28 +28,26 @@ public sealed class LudoModule : IGameModule
     {
         var admin = endpoints.MapGroup("/admin/ludo").RequireAuthorization("AdminPolicy");
 
-        // 1. Roll Endpoint
         admin.MapPost("/{roomId}/roll", async (string roomId, IServiceProvider sp, IGameBroadcaster bc) =>
         {
             var command = new GameCommand(GameCoreConstants.AdminUserId, "roll", default);
             var res = await sp.GetRequiredKeyedService<IGameEngine>("Ludo").ExecuteAsync(roomId, command);
-            
-            if (res.Success) await bc.BroadcastResultAsync(roomId, res);
-            return res.Success ? Results.Ok(res) : Results.BadRequest(res);
-        });
-
-        // 2. Move Endpoint (WAS MISSING -> CAUSED 404)
-        admin.MapPost("/{roomId}/move/{tokenIndex:int}", async (string roomId, int tokenIndex, IServiceProvider sp, IGameBroadcaster bc) =>
-        {
-            // Construct payload manually since GameCommand expects a JsonElement
-            var json = $"{{\"tokenIndex\": {tokenIndex}}}";
-            var payload = JsonDocument.Parse(json).RootElement;
-            
-            var command = new GameCommand(GameCoreConstants.AdminUserId, "move", payload);
-            var res = await sp.GetRequiredKeyedService<IGameEngine>("Ludo").ExecuteAsync(roomId, command);
 
             if (res.Success) await bc.BroadcastResultAsync(roomId, res);
             return res.Success ? Results.Ok(res) : Results.BadRequest(res);
         });
+
+        admin.MapPost("/{roomId}/move/{tokenIndex:int}",
+            async (string roomId, int tokenIndex, IServiceProvider sp, IGameBroadcaster bc) =>
+            {
+                var json = $"{{\"tokenIndex\": {tokenIndex}}}";
+                var payload = JsonDocument.Parse(json).RootElement;
+
+                var command = new GameCommand(GameCoreConstants.AdminUserId, "move", payload);
+                var res = await sp.GetRequiredKeyedService<IGameEngine>("Ludo").ExecuteAsync(roomId, command);
+
+                if (res.Success) await bc.BroadcastResultAsync(roomId, res);
+                return res.Success ? Results.Ok(res) : Results.BadRequest(res);
+            });
     }
 }

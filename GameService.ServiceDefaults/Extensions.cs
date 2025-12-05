@@ -25,7 +25,6 @@ public static class Extensions
 
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
-            // AddStandardResilienceHandler includes: Retry, Circuit Breaker, Timeout, Rate Limiter
             http.AddStandardResilienceHandler();
 
             http.AddServiceDiscovery();
@@ -81,29 +80,22 @@ public static class Extensions
         var healthChecks = builder.Services.AddHealthChecks()
             .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
 
-        // Add Redis health check if connection string is configured
         var redisConnectionString = builder.Configuration.GetConnectionString("cache");
         if (!string.IsNullOrEmpty(redisConnectionString))
-        {
-            healthChecks.AddRedis(redisConnectionString, name: "redis", tags: ["ready"]);
-        }
+            healthChecks.AddRedis(redisConnectionString, "redis", tags: ["ready"]);
 
-        // Add PostgreSQL health check if connection string is configured
         var postgresConnectionString = builder.Configuration.GetConnectionString("postgresdb");
         if (!string.IsNullOrEmpty(postgresConnectionString))
-        {
             healthChecks.AddNpgSql(postgresConnectionString, name: "postgresql", tags: ["ready"]);
-        }
 
         return builder;
     }
 
     public static WebApplication MapDefaultEndpoints(this WebApplication app)
     {
-        // Map health checks in all environments for production readiness
         app.MapHealthChecks(HealthEndpointPath, new HealthCheckOptions
         {
-            Predicate = _ => true // Include all health checks
+            Predicate = _ => true
         });
 
         app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
@@ -111,7 +103,6 @@ public static class Extensions
             Predicate = r => r.Tags.Contains("live")
         });
 
-        // Readiness endpoint - only checks external dependencies (Redis, PostgreSQL)
         app.MapHealthChecks("/ready", new HealthCheckOptions
         {
             Predicate = r => r.Tags.Contains("ready")

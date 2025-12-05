@@ -16,8 +16,8 @@ public sealed class GameLoopWorker(
     IOptions<GameServiceOptions> options,
     ILogger<GameLoopWorker> logger) : BackgroundService
 {
+    private const int MaxRoomsPerTick = 50;
     private readonly int _tickIntervalMs = options.Value.GameLoop.TickIntervalMs;
-    private const int MaxRoomsPerTick = 50; // Process up to 50 rooms per tick to avoid blocking
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -51,9 +51,8 @@ public sealed class GameLoopWorker(
 
             try
             {
-                // Get rooms sorted by oldest activity (most likely to have timeouts)
                 var roomIds = await roomRegistry.GetRoomsNeedingTimeoutCheckAsync(
-                    module.GameName, 
+                    module.GameName,
                     MaxRoomsPerTick);
 
                 if (roomIds.Count == 0) continue;
@@ -64,7 +63,7 @@ public sealed class GameLoopWorker(
 
                     try
                     {
-                        if (!await roomRegistry.TryAcquireLockAsync(roomId, TimeSpan.FromSeconds(1))) 
+                        if (!await roomRegistry.TryAcquireLockAsync(roomId, TimeSpan.FromSeconds(1)))
                             continue;
 
                         try
@@ -77,8 +76,7 @@ public sealed class GameLoopWorker(
                                     roomId, result.Events.Count);
 
                                 await broadcaster.BroadcastResultAsync(roomId, result);
-                                
-                                // Update activity timestamp after processing
+
                                 await roomRegistry.UpdateRoomActivityAsync(roomId, module.GameName);
                             }
                         }

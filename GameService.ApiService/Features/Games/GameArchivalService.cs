@@ -1,6 +1,5 @@
 using System.Text.Json;
 using GameService.ApiService.Features.Economy;
-using GameService.GameCore;
 using GameService.ServiceDefaults.Data;
 
 namespace GameService.ApiService.Features.Games;
@@ -8,29 +7,29 @@ namespace GameService.ApiService.Features.Games;
 public interface IGameArchivalService
 {
     /// <summary>
-    /// Archive a completed game and process payouts to winners.
-    /// This handles the complete end-of-game flow: payouts + archival.
+    ///     Archive a completed game and process payouts to winners.
+    ///     This handles the complete end-of-game flow: payouts + archival.
     /// </summary>
     Task<GameEndResult> EndGameAsync(
-        string roomId, 
-        string gameType, 
-        object finalState, 
-        IReadOnlyDictionary<string, int> playerSeats, 
-        string? winnerUserId, 
-        long totalPot, 
+        string roomId,
+        string gameType,
+        object finalState,
+        IReadOnlyDictionary<string, int> playerSeats,
+        string? winnerUserId,
+        long totalPot,
         DateTimeOffset startedAt,
         IReadOnlyList<string>? winnerRanking = null);
-    
+
     /// <summary>
-    /// Archive game without payouts (e.g., for cancelled games that already processed refunds)
+    ///     Archive game without payouts (e.g., for cancelled games that already processed refunds)
     /// </summary>
     Task ArchiveGameAsync(
-        string roomId, 
-        string gameType, 
-        object finalState, 
-        IReadOnlyDictionary<string, int> playerSeats, 
-        string? winnerUserId, 
-        long totalPot, 
+        string roomId,
+        string gameType,
+        object finalState,
+        IReadOnlyDictionary<string, int> playerSeats,
+        string? winnerUserId,
+        long totalPot,
         DateTimeOffset startedAt);
 }
 
@@ -40,39 +39,34 @@ public record GameEndResult(
     string? ErrorMessage = null);
 
 public class GameArchivalService(
-    GameDbContext db, 
+    GameDbContext db,
     IEconomyService economyService,
     ILogger<GameArchivalService> logger) : IGameArchivalService
 {
     public async Task<GameEndResult> EndGameAsync(
-        string roomId, 
-        string gameType, 
-        object finalState, 
-        IReadOnlyDictionary<string, int> playerSeats, 
-        string? winnerUserId, 
+        string roomId,
+        string gameType,
+        object finalState,
+        IReadOnlyDictionary<string, int> playerSeats,
+        string? winnerUserId,
         long totalPot,
         DateTimeOffset startedAt,
         IReadOnlyList<string>? winnerRanking = null)
     {
         try
         {
-            // Process payouts first
             var payoutResult = await economyService.ProcessGamePayoutsAsync(
-                roomId, 
-                gameType, 
-                totalPot, 
-                playerSeats, 
+                roomId,
+                gameType,
+                totalPot,
+                playerSeats,
                 winnerUserId,
                 winnerRanking);
 
             if (!payoutResult.Success)
-            {
-                logger.LogError("Failed to process payouts for game {RoomId}: {Error}", 
+                logger.LogError("Failed to process payouts for game {RoomId}: {Error}",
                     roomId, payoutResult.ErrorMessage);
-                // Continue with archival even if payouts failed - we can retry payouts later
-            }
 
-            // Archive the game
             await ArchiveGameAsync(roomId, gameType, finalState, playerSeats, winnerUserId, totalPot, startedAt);
 
             logger.LogInformation(
@@ -89,11 +83,11 @@ public class GameArchivalService(
     }
 
     public async Task ArchiveGameAsync(
-        string roomId, 
-        string gameType, 
-        object finalState, 
-        IReadOnlyDictionary<string, int> playerSeats, 
-        string? winnerUserId, 
+        string roomId,
+        string gameType,
+        object finalState,
+        IReadOnlyDictionary<string, int> playerSeats,
+        string? winnerUserId,
         long totalPot,
         DateTimeOffset startedAt)
     {
@@ -114,7 +108,7 @@ public class GameArchivalService(
             db.ArchivedGames.Add(archivedGame);
             await db.SaveChangesAsync();
 
-            logger.LogInformation("Archived game {RoomId} (Type: {GameType}, Winner: {Winner}, Pot: {Pot})", 
+            logger.LogInformation("Archived game {RoomId} (Type: {GameType}, Winner: {Winner}, Pot: {Pot})",
                 roomId, gameType, winnerUserId ?? "None", totalPot);
         }
         catch (Exception ex)

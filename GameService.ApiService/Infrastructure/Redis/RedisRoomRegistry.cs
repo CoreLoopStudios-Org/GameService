@@ -98,7 +98,6 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
 
     public async Task SetDisconnectedPlayerAsync(string userId, string roomId, TimeSpan gracePeriod)
     {
-        // Store with TTL for automatic cleanup
         var key = $"{DisconnectedPlayersKey}:{userId}";
         await _db.StringSetAsync(key, roomId, gracePeriod);
     }
@@ -114,13 +113,9 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
     {
         var key = $"{RateLimitKeyPrefix}{userId}";
         var count = await _db.StringIncrementAsync(key);
-        
-        if (count == 1)
-        {
-            // Set expiry on first request in window
-            await _db.KeyExpireAsync(key, TimeSpan.FromMinutes(1));
-        }
-        
+
+        if (count == 1) await _db.KeyExpireAsync(key, TimeSpan.FromMinutes(1));
+
         return count <= maxPerMinute;
     }
 
@@ -133,21 +128,16 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
     public async Task DecrementConnectionCountAsync(string userId)
     {
         var count = await _db.HashDecrementAsync(UserConnectionCountKey, userId);
-        if (count <= 0)
-        {
-            await _db.HashDeleteAsync(UserConnectionCountKey, userId);
-        }
+        if (count <= 0) await _db.HashDeleteAsync(UserConnectionCountKey, userId);
     }
 
     public async Task<IReadOnlyList<string>> GetRoomsNeedingTimeoutCheckAsync(string gameType, int maxRooms)
     {
-        // Get rooms sorted by oldest activity first (most likely to have timeouts)
         var members = await _db.SortedSetRangeByRankAsync(
-            ActivityIndexKey(gameType), 
-            0, 
-            maxRooms - 1, 
-            Order.Ascending);
-        
+            ActivityIndexKey(gameType),
+            0,
+            maxRooms - 1);
+
         return members.Select(m => m.ToString()).ToList();
     }
 
@@ -157,7 +147,18 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
         await _db.SortedSetAddAsync(ActivityIndexKey(gameType), roomId, score);
     }
 
-    private static string GameTypeIndexKey(string gameType) => $"index:rooms:{gameType}";
-    private static string ActivityIndexKey(string gameType) => $"index:activity:{gameType}";
-    private static string LockKey(string roomId) => $"lock:room:{roomId}";
+    private static string GameTypeIndexKey(string gameType)
+    {
+        return $"index:rooms:{gameType}";
+    }
+
+    private static string ActivityIndexKey(string gameType)
+    {
+        return $"index:activity:{gameType}";
+    }
+
+    private static string LockKey(string roomId)
+    {
+        return $"lock:room:{roomId}";
+    }
 }

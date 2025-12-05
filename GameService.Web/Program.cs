@@ -29,7 +29,6 @@ builder.Services.AddHttpClient<GameAdminService>((sp, client) =>
 });
 builder.Services.AddHostedService<RedisLogStreamer>();
 
-// Configure PostgreSQL with connection pooling
 var webDbOptions = builder.Configuration
     .GetSection(GameServiceOptions.SectionName)
     .Get<GameServiceOptions>()?.Database ?? new DatabaseOptions();
@@ -39,12 +38,12 @@ builder.AddNpgsqlDbContext<GameDbContext>("postgresdb", configureDbContextOption
     options.UseNpgsql(npgsqlOptions =>
     {
         npgsqlOptions.EnableRetryOnFailure(
-            maxRetryCount: 3,
-            maxRetryDelay: TimeSpan.FromSeconds(5),
-            errorCodesToAdd: null);
+            3,
+            TimeSpan.FromSeconds(5),
+            null);
         npgsqlOptions.CommandTimeout(webDbOptions.CommandTimeout);
     });
-    
+
     if (builder.Environment.IsDevelopment())
     {
         options.EnableSensitiveDataLogging();
@@ -88,12 +87,11 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", true);
     app.UseHsts();
-    
-    // Production: Apply pending migrations
+
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<GameDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    
+
     var pendingMigrations = await db.Database.GetPendingMigrationsAsync();
     if (pendingMigrations.Any())
     {
@@ -103,7 +101,6 @@ if (!app.Environment.IsDevelopment())
 }
 else
 {
-    // Development: Use EnsureCreated for rapid iteration
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<GameDbContext>();
     await db.Database.EnsureCreatedAsync();

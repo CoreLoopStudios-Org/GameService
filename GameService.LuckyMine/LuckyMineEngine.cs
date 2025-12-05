@@ -7,10 +7,9 @@ public sealed class LuckyMineEngine(
     IGameRepositoryFactory repoFactory,
     ILogger<LuckyMineEngine> logger) : IGameEngine
 {
-    private readonly IGameRepository<LuckyMineState> _repository = repoFactory.Create<LuckyMineState>("LuckyMine");
-
     private static readonly string[] _legalActions = ["click", "cashout"];
     private static readonly string[] _noActions = [];
+    private readonly IGameRepository<LuckyMineState> _repository = repoFactory.Create<LuckyMineState>("LuckyMine");
 
     public string GameType => "LuckyMine";
 
@@ -18,13 +17,9 @@ public sealed class LuckyMineEngine(
     {
         var action = command.Action.AsSpan();
         if (action.Equals("click", StringComparison.OrdinalIgnoreCase))
-        {
             return await HandleClickAsync(roomId, command.UserId, command.GetInt("tileIndex"));
-        }
         if (action.Equals("cashout", StringComparison.OrdinalIgnoreCase))
-        {
             return await HandleCashoutAsync(roomId, command.UserId);
-        }
         return GameActionResult.Error($"Unknown action: {command.Action}");
     }
 
@@ -34,14 +29,11 @@ public sealed class LuckyMineEngine(
         if (ctx == null) return _noActions;
 
         if (!ctx.Meta.PlayerSeats.ContainsKey(userId)) return _noActions;
-        
-        var state = ctx.State; 
 
-        if (state.Status == (byte)LuckyMineStatus.Active)
-        {
-            return _legalActions;
-        }
-            
+        var state = ctx.State;
+
+        if (state.Status == (byte)LuckyMineStatus.Active) return _legalActions;
+
         return _noActions;
     }
 
@@ -76,46 +68,43 @@ public sealed class LuckyMineEngine(
         if (state.IsRevealed(tileIndex)) return GameActionResult.Error("Tile already revealed");
 
         var events = new List<GameEvent>();
-        
+
         state.SetRevealed(tileIndex);
 
-        bool isMine = state.IsMine(tileIndex);
+        var isMine = state.IsMine(tileIndex);
 
         if (isMine)
         {
             state.Status = (byte)LuckyMineStatus.HitMine;
             state.CurrentWinnings = 0;
-            events.Add(new GameEvent("HitMine", new { UserId = userId, Tile = tileIndex, LostAmount = state.EntryCost }));
+            events.Add(
+                new GameEvent("HitMine", new { UserId = userId, Tile = tileIndex, LostAmount = state.EntryCost }));
             events.Add(new GameEvent("GameOver", new { UserId = userId, Result = "Lost", FinalWinnings = 0 }));
             logger.LogInformation("Room {Room} Player {Player} hit mine at {Tile}", roomId, userId, tileIndex);
-            
+
             await _repository.SaveAsync(roomId, state, ctx.Meta);
-            
-            // Game over - trigger archival
+
             return GameActionResult.GameOver(
                 MapToDto(ref state),
                 new GameEndedInfo(
                     roomId,
                     GameType,
                     ctx.Meta.PlayerSeats,
-                    null, // No winner - hit mine
-                    ctx.Meta.EntryFee,
+                    null, ctx.Meta.EntryFee,
                     ctx.Meta.TurnStartedAt),
                 events.ToArray());
         }
-        else
-        {
-            state.RevealedSafeCount++;
-            state.CurrentWinnings = CalculateWinnings(ref state);
 
-            events.Add(new GameEvent("TileSafe", new
-            {
-                Tile = tileIndex,
-                RevealedCount = state.RevealedSafeCount,
-                CurrentWinnings = state.CurrentWinnings,
-                NextTileWinnings = CalculateNextWinnings(ref state)
-            }));
-        }
+        state.RevealedSafeCount++;
+        state.CurrentWinnings = CalculateWinnings(ref state);
+
+        events.Add(new GameEvent("TileSafe", new
+        {
+            Tile = tileIndex,
+            RevealedCount = state.RevealedSafeCount,
+            state.CurrentWinnings,
+            NextTileWinnings = CalculateNextWinnings(ref state)
+        }));
 
         await _repository.SaveAsync(roomId, state, ctx.Meta);
 
@@ -137,7 +126,8 @@ public sealed class LuckyMineEngine(
 
         if (!ctx.Meta.PlayerSeats.ContainsKey(userId)) return GameActionResult.Error("Player not in room");
         if (state.Status != (byte)LuckyMineStatus.Active) return GameActionResult.Error("Game already ended");
-        if (state.RevealedSafeCount == 0) return GameActionResult.Error("Must reveal at least one tile before cashing out");
+        if (state.RevealedSafeCount == 0)
+            return GameActionResult.Error("Must reveal at least one tile before cashing out");
 
         state.Status = (byte)LuckyMineStatus.CashedOut;
         var winnings = state.CurrentWinnings;
@@ -153,37 +143,34 @@ public sealed class LuckyMineEngine(
 
         await _repository.SaveAsync(roomId, state, ctx.Meta);
 
-        // Game over with winner - trigger archival
         return GameActionResult.GameOver(
             MapToDto(ref state),
             new GameEndedInfo(
                 roomId,
                 GameType,
                 ctx.Meta.PlayerSeats,
-                userId, // Winner
-                ctx.Meta.EntryFee,
+                userId, ctx.Meta.EntryFee,
                 ctx.Meta.TurnStartedAt,
-                new[] { userId }), // Winner ranking
-            events.ToArray());
+                new[] { userId }), events.ToArray());
     }
 
     private long CalculateWinnings(ref LuckyMineState state)
     {
-        int safeTiles = state.TotalTiles - state.TotalMines;
+        var safeTiles = state.TotalTiles - state.TotalMines;
         if (safeTiles <= 0 || state.RevealedSafeCount <= 0) return 0;
-        
-        double multiplier = 1.0;
-        int remaining = safeTiles;
+
+        var multiplier = 1.0;
+        var remaining = safeTiles;
         int total = state.TotalTiles;
-        
-        for (int i = 0; i < state.RevealedSafeCount; i++)
+
+        for (var i = 0; i < state.RevealedSafeCount; i++)
         {
             multiplier *= (double)total / remaining;
             remaining--;
             total--;
         }
-        
-        return (long)(state.EntryCost * multiplier * 0.97); // 3% house edge
+
+        return (long)(state.EntryCost * multiplier * 0.97);
     }
 
     private long CalculateNextWinnings(ref LuckyMineState state)

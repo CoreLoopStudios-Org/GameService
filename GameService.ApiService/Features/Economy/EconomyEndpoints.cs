@@ -25,18 +25,15 @@ public static class EconomyEndpoints
         var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
 
-        // Input validation
         if (!InputValidator.IsValidCoinAmount(req.Amount))
             return Results.BadRequest("Invalid amount");
-        
+
         if (!InputValidator.IsValidReferenceId(req.ReferenceId))
             return Results.BadRequest("Invalid reference ID format");
-        
+
         if (!InputValidator.IsValidIdempotencyKey(req.IdempotencyKey))
             return Results.BadRequest("Invalid idempotency key format");
 
-        // SECURITY: Users can only debit (spend) coins, not credit themselves
-        // Credits must come from game engines or admin endpoints with valid ReferenceId
         if (req.Amount > 0)
             return Results.BadRequest("Users cannot credit coins directly. Use game actions to earn coins.");
 
@@ -65,7 +62,6 @@ public static class EconomyEndpoints
         var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
 
-        // Clamp pagination values
         pageSize = Math.Clamp(pageSize, 1, 100);
         page = Math.Max(1, page);
 

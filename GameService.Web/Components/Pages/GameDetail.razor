@@ -37,7 +37,8 @@
             {
                 <h4>Current Turn: Player @ludoState.CurrentPlayer</h4>
                 <div class="d-flex gap-3">
-                    <span><i class="bi bi-dice-6 me-1"></i>Last Roll: @(ludoState.LastDiceRoll == 0 ? "-" : ludoState.LastDiceRoll)</span>
+                    <span><i
+                            class="bi bi-dice-6 me-1"></i>Last Roll: @(ludoState.LastDiceRoll == 0 ? "-" : ludoState.LastDiceRoll)</span>
                     <span><i class="bi bi-clock-history me-1"></i>Turn ID: @ludoState.TurnId</span>
                 </div>
             }
@@ -47,13 +48,14 @@
     }
     else if (luckyMineState != null)
     {
-        <div class="alert @(luckyMineState.Status == "Active" ? "alert-info" : luckyMineState.Status == "CashedOut" ? "alert-success" : "alert-danger")">
-            Status: <strong>@luckyMineState.Status</strong> | 
+        <div
+            class="alert @(luckyMineState.Status == "Active" ? "alert-info" : luckyMineState.Status == "CashedOut" ? "alert-success" : "alert-danger")">
+            Status: <strong>@luckyMineState.Status</strong> |
             Mines: @luckyMineState.TotalMines / @luckyMineState.TotalTiles |
             Revealed: @luckyMineState.RevealedSafeCount |
             Winnings: @luckyMineState.CurrentWinnings
         </div>
-        
+
         <LuckyMineAdminPanel Dto="luckyMineState"/>
     }
     else if (!string.IsNullOrEmpty(rawJson))
@@ -139,7 +141,6 @@
             if (!root.TryGetProperty("state", out var stateEl))
                 return null;
 
-            // Handle byte[] tokens (Base64 string in JSON)
             var tokens = new byte[16];
             if (stateEl.TryGetProperty("tokens", out var tokensProp))
             {
@@ -165,14 +166,12 @@
                 TurnId = stateEl.GetProperty("turnId").GetInt32(),
                 ConsecutiveSixes = stateEl.TryGetProperty("consecutiveSixes", out var cs) ? cs.GetInt32() : 0,
                 IsGameOver = stateEl.TryGetProperty("isGameOver", out var igo) && igo.GetBoolean(),
-                
-                // Optimized Fields
                 ActiveSeatsMask = stateEl.TryGetProperty("activeSeatsMask", out var asm) ? asm.GetByte() : (byte)0,
                 FinishedMask = stateEl.TryGetProperty("finishedMask", out var fm) ? fm.GetByte() : (byte)0,
                 LegalMovesMask = stateEl.TryGetProperty("legalMovesMask", out var lmm) ? lmm.GetByte() : (byte)0,
                 WinnersPacked = stateEl.TryGetProperty("winnersPacked", out var wp) ? wp.GetUInt32() : 0,
-                
-                Tokens = tokens,
+
+                Tokens = tokens
             };
         }
         catch (Exception ex)
@@ -187,4 +186,5 @@
         await AdminService.DeleteGameAsync(RoomId);
         Nav.NavigateTo("games");
     }
+
 }

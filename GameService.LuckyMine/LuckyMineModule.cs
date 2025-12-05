@@ -30,21 +30,22 @@ public sealed class LuckyMineModule : IGameModule
             if (ctx == null) return Results.NotFound();
 
             var state = ctx.State;
-            int safeTiles = state.TotalTiles - state.TotalMines;
+            var safeTiles = state.TotalTiles - state.TotalMines;
             long nextWinnings = 0;
             if (safeTiles > 0 && state.RevealedSafeCount < safeTiles)
             {
                 var tempState = state;
                 tempState.RevealedSafeCount++;
-                double multiplier = 1.0;
-                int remaining = safeTiles;
+                var multiplier = 1.0;
+                var remaining = safeTiles;
                 int total = state.TotalTiles;
-                for (int i = 0; i < tempState.RevealedSafeCount; i++)
+                for (var i = 0; i < tempState.RevealedSafeCount; i++)
                 {
                     multiplier *= (double)total / remaining;
                     remaining--;
                     total--;
                 }
+
                 nextWinnings = (long)(state.EntryCost * multiplier * 0.97);
             }
 

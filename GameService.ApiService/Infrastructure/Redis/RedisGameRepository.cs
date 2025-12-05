@@ -6,34 +6,34 @@ using StackExchange.Redis;
 namespace GameService.ApiService.Infrastructure.Redis;
 
 /// <summary>
-/// Migration strategy interface for handling struct layout changes between deployments.
-/// Implement per-game-type migrations when struct fields change.
+///     Migration strategy interface for handling struct layout changes between deployments.
+///     Implement per-game-type migrations when struct fields change.
 /// </summary>
 public interface IStateMigration<TState> where TState : struct
 {
     /// <summary>
-    /// Source version this migration handles (migrates FROM this version)
+    ///     Source version this migration handles (migrates FROM this version)
     /// </summary>
     byte FromVersion { get; }
-    
+
     /// <summary>
-    /// Target version this migration produces (migrates TO this version)
+    ///     Target version this migration produces (migrates TO this version)
     /// </summary>
     byte ToVersion { get; }
-    
+
     /// <summary>
-    /// Expected size of the source struct in bytes
+    ///     Expected size of the source struct in bytes
     /// </summary>
     int FromSize { get; }
-    
+
     /// <summary>
-    /// Migrate from old bytes to new state. Returns true if migration succeeded.
+    ///     Migrate from old bytes to new state. Returns true if migration succeeded.
     /// </summary>
     bool TryMigrate(ReadOnlySpan<byte> oldData, out TState newState);
 }
 
 /// <summary>
-/// Registry for state migrations. Games register migrations at startup.
+///     Registry for state migrations. Games register migrations at startup.
 /// </summary>
 public interface IStateMigrationRegistry
 {
@@ -44,16 +44,16 @@ public interface IStateMigrationRegistry
 public sealed class StateMigrationRegistry : IStateMigrationRegistry
 {
     private readonly Dictionary<(Type, byte, int), object> _migrations = new();
-    
+
     public void Register<TState>(IStateMigration<TState> migration) where TState : struct
     {
         _migrations[(typeof(TState), migration.FromVersion, migration.FromSize)] = migration;
     }
-    
+
     public IStateMigration<TState>? GetMigration<TState>(byte fromVersion, int fromSize) where TState : struct
     {
-        return _migrations.TryGetValue((typeof(TState), fromVersion, fromSize), out var m) 
-            ? m as IStateMigration<TState> 
+        return _migrations.TryGetValue((typeof(TState), fromVersion, fromSize), out var m)
+            ? m as IStateMigration<TState>
             : null;
     }
 }
@@ -100,44 +100,6 @@ public sealed class RedisGameRepository<TState>(
             return null;
         }
     }
-    
-    private TState DeserializeStateWithMigration(byte[] bytes, string roomId)
-    {
-        if (bytes.Length < 5) 
-            throw new InvalidOperationException("Invalid state data: too short");
-
-        var storedVersion = bytes[0];
-        var storedSize = Unsafe.ReadUnaligned<int>(ref bytes[1]);
-        
-        // Fast path: version and size match
-        if (storedVersion == CurrentVersion && storedSize == StateSize)
-        {
-            return Unsafe.ReadUnaligned<TState>(ref bytes[5]);
-        }
-        
-        // Try to migrate from old version/size
-        if (migrationRegistry != null)
-        {
-            var migration = migrationRegistry.GetMigration<TState>(storedVersion, storedSize);
-            if (migration != null)
-            {
-                var oldData = bytes.AsSpan(5, storedSize);
-                if (migration.TryMigrate(oldData, out var newState))
-                {
-                    logger.LogInformation(
-                        "Migrated room {RoomId} state from v{FromVersion} ({FromSize}B) to v{ToVersion} ({ToSize}B)",
-                        roomId, storedVersion, storedSize, migration.ToVersion, StateSize);
-                    return newState;
-                }
-            }
-        }
-        
-        // No migration available - log detailed error for debugging
-        throw new InvalidOperationException(
-            $"Cannot load state for room {roomId}. " +
-            $"Stored: v{storedVersion} ({storedSize}B), Current: v{CurrentVersion} ({StateSize}B). " +
-            $"No migration registered. Consider deploying a migration or resetting the room.");
-    }
 
     public async Task SaveAsync(string roomId, TState state, GameRoomMeta meta)
     {
@@ -166,6 +128,39 @@ public sealed class RedisGameRepository<TState>(
     public async Task ReleaseLockAsync(string roomId)
     {
         await _db.KeyDeleteAsync(LockKey(roomId));
+    }
+
+    private TState DeserializeStateWithMigration(byte[] bytes, string roomId)
+    {
+        if (bytes.Length < 5)
+            throw new InvalidOperationException("Invalid state data: too short");
+
+        var storedVersion = bytes[0];
+        var storedSize = Unsafe.ReadUnaligned<int>(ref bytes[1]);
+
+        if (storedVersion == CurrentVersion && storedSize == StateSize)
+            return Unsafe.ReadUnaligned<TState>(ref bytes[5]);
+
+        if (migrationRegistry != null)
+        {
+            var migration = migrationRegistry.GetMigration<TState>(storedVersion, storedSize);
+            if (migration != null)
+            {
+                var oldData = bytes.AsSpan(5, storedSize);
+                if (migration.TryMigrate(oldData, out var newState))
+                {
+                    logger.LogInformation(
+                        "Migrated room {RoomId} state from v{FromVersion} ({FromSize}B) to v{ToVersion} ({ToSize}B)",
+                        roomId, storedVersion, storedSize, migration.ToVersion, StateSize);
+                    return newState;
+                }
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Cannot load state for room {roomId}. " +
+            $"Stored: v{storedVersion} ({storedSize}B), Current: v{CurrentVersion} ({StateSize}B). " +
+            $"No migration registered. Consider deploying a migration or resetting the room.");
     }
 
     private string StateKey(string roomId)

@@ -14,7 +14,7 @@ public sealed record LudoStateDto
     public byte LegalMovesMask { get; init; }
 
     public uint WinnersPacked { get; init; }
-    
+
     public bool IsGameOver { get; init; }
     public byte[] Tokens { get; init; } = [];
 }

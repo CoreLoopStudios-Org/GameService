@@ -2,22 +2,21 @@ using GameService.ServiceDefaults.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Npgsql;
 
 namespace GameService.ServiceDefaults.Data;
 
 /// <summary>
-/// Helper for configuring PostgreSQL connections with pooling and read replicas.
+///     Helper for configuring PostgreSQL connections with pooling and read replicas.
 /// </summary>
 public static class DatabaseConnectionHelper
 {
     /// <summary>
-    /// Configures the primary DbContext with connection pooling settings.
+    ///     Configures the primary DbContext with connection pooling settings.
     /// </summary>
     public static void ConfigureNpgsqlWithPooling(
-        DbContextOptionsBuilder options, 
-        string connectionString, 
+        DbContextOptionsBuilder options,
+        string connectionString,
         DatabaseOptions dbOptions)
     {
         var builder = new NpgsqlConnectionStringBuilder(connectionString)
@@ -32,19 +31,17 @@ public static class DatabaseConnectionHelper
 
         options.UseNpgsql(builder.ConnectionString, npgsqlOptions =>
         {
-            // Enable retry on transient failures
             npgsqlOptions.EnableRetryOnFailure(
-                maxRetryCount: 3,
-                maxRetryDelay: TimeSpan.FromSeconds(5),
-                errorCodesToAdd: null);
-            
-            // Command timeout at Npgsql level
+                3,
+                TimeSpan.FromSeconds(5),
+                null);
+
             npgsqlOptions.CommandTimeout(dbOptions.CommandTimeout);
         });
     }
 
     /// <summary>
-    /// Builds a connection string with pooling settings applied.
+    ///     Builds a connection string with pooling settings applied.
     /// </summary>
     public static string BuildConnectionString(string baseConnectionString, DatabaseOptions dbOptions)
     {
@@ -63,15 +60,14 @@ public static class DatabaseConnectionHelper
 }
 
 /// <summary>
-/// Read-only DbContext for queries that can use a read replica.
-/// Use this for player lookups, leaderboards, and history queries.
+///     Read-only DbContext for queries that can use a read replica.
+///     Use this for player lookups, leaderboards, and history queries.
 /// </summary>
 public class ReadOnlyGameDbContext : GameDbContext
 {
-    public ReadOnlyGameDbContext(DbContextOptions<ReadOnlyGameDbContext> options) 
+    public ReadOnlyGameDbContext(DbContextOptions<ReadOnlyGameDbContext> options)
         : base(ChangeOptionsType(options))
     {
-        // Disable change tracking for read-only context
         ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
         ChangeTracker.AutoDetectChangesEnabled = false;
     }
@@ -79,11 +75,8 @@ public class ReadOnlyGameDbContext : GameDbContext
     private static DbContextOptions<GameDbContext> ChangeOptionsType(DbContextOptions<ReadOnlyGameDbContext> options)
     {
         var builder = new DbContextOptionsBuilder<GameDbContext>();
-        
-        foreach (var extension in options.Extensions)
-        {
-            builder.Options.WithExtension(extension);
-        }
+
+        foreach (var extension in options.Extensions) builder.Options.WithExtension(extension);
 
         return builder.Options;
     }
@@ -100,13 +93,13 @@ public class ReadOnlyGameDbContext : GameDbContext
 }
 
 /// <summary>
-/// Extension methods for registering database contexts with pooling.
+///     Extension methods for registering database contexts with pooling.
 /// </summary>
 public static class DatabaseServiceExtensions
 {
     /// <summary>
-    /// Adds a read-only DbContext that uses the read replica if configured.
-    /// Falls back to primary connection if no replica is configured.
+    ///     Adds a read-only DbContext that uses the read replica if configured.
+    ///     Falls back to primary connection if no replica is configured.
     /// </summary>
     public static IServiceCollection AddReadOnlyDbContext(
         this IServiceCollection services,
@@ -118,17 +111,14 @@ public static class DatabaseServiceExtensions
             .Get<GameServiceOptions>() ?? new GameServiceOptions();
 
         var dbOptions = gameOptions.Database;
-        
-        // Use read replica if configured, otherwise use primary
+
         var connectionString = !string.IsNullOrEmpty(dbOptions.ReadReplicaConnectionString)
             ? dbOptions.ReadReplicaConnectionString
             : configuration.GetConnectionString(primaryConnectionStringName);
 
         if (string.IsNullOrEmpty(connectionString))
-        {
             throw new InvalidOperationException(
                 $"Connection string '{primaryConnectionStringName}' not found and no ReadReplicaConnectionString configured.");
-        }
 
         services.AddDbContext<ReadOnlyGameDbContext>(options =>
         {

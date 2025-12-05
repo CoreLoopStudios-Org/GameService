@@ -6,22 +6,21 @@ using Microsoft.Extensions.Options;
 namespace GameService.ApiService.Infrastructure.Workers;
 
 /// <summary>
-/// Background worker that cleans up old idempotency keys from WalletTransactions.
-/// Runs once per hour to remove keys older than configured retention period.
+///     Background worker that cleans up old idempotency keys from WalletTransactions.
+///     Runs once per hour to remove keys older than configured retention period.
 /// </summary>
 public sealed class IdempotencyCleanupWorker(
     IServiceProvider serviceProvider,
     IOptions<GameServiceOptions> options,
     ILogger<IdempotencyCleanupWorker> logger) : BackgroundService
 {
-    private readonly int _retentionDays = options.Value.Economy.IdempotencyKeyRetentionDays;
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromHours(1);
+    private readonly int _retentionDays = options.Value.Economy.IdempotencyKeyRetentionDays;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("IdempotencyCleanupWorker started - retention period: {Days} days", _retentionDays);
 
-        // Wait a bit before first cleanup to let the app stabilize
         await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -46,14 +45,11 @@ public sealed class IdempotencyCleanupWorker(
 
         var cutoffDate = DateTimeOffset.UtcNow.AddDays(-_retentionDays);
 
-        // Clear idempotency keys for old transactions (keep the transaction record, just clear the key)
         var rowsUpdated = await db.WalletTransactions
             .Where(t => t.IdempotencyKey != null && t.CreatedAt < cutoffDate)
             .ExecuteUpdateAsync(setters => setters.SetProperty(t => t.IdempotencyKey, (string?)null), ct);
 
         if (rowsUpdated > 0)
-        {
             logger.LogInformation("Cleared {Count} idempotency keys older than {Cutoff}", rowsUpdated, cutoffDate);
-        }
     }
 }

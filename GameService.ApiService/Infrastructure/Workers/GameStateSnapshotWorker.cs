@@ -1,4 +1,3 @@
-using System.Text.Json;
 using GameService.GameCore;
 using GameService.ServiceDefaults.Data;
 using Microsoft.EntityFrameworkCore;
@@ -7,9 +6,9 @@ using StackExchange.Redis;
 namespace GameService.ApiService.Infrastructure.Workers;
 
 /// <summary>
-/// Background worker that periodically snapshots active game states from Redis to PostgreSQL.
-/// Provides disaster recovery capability if Redis data is lost.
-/// Runs every 5 minutes by default.
+///     Background worker that periodically snapshots active game states from Redis to PostgreSQL.
+///     Provides disaster recovery capability if Redis data is lost.
+///     Runs every 5 minutes by default.
 /// </summary>
 public sealed class GameStateSnapshotWorker(
     IServiceProvider serviceProvider,
@@ -17,14 +16,13 @@ public sealed class GameStateSnapshotWorker(
     IRoomRegistry roomRegistry,
     ILogger<GameStateSnapshotWorker> logger) : BackgroundService
 {
-    private static readonly TimeSpan SnapshotInterval = TimeSpan.FromMinutes(5);
     private const int BatchSize = 50;
+    private static readonly TimeSpan SnapshotInterval = TimeSpan.FromMinutes(5);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("GameStateSnapshotWorker started - snapshotting every {Interval}", SnapshotInterval);
 
-        // Wait for app to stabilize
         await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -63,13 +61,11 @@ public sealed class GameStateSnapshotWorker(
             if (ct.IsCancellationRequested) break;
 
             foreach (var roomId in batch)
-            {
                 try
                 {
                     var gameType = await roomRegistry.GetGameTypeAsync(roomId);
                     if (gameType == null) continue;
 
-                    // Read state and meta directly from Redis
                     var stateKey = $"{{game:{gameType}}}:{roomId}:state";
                     var metaKey = $"{{game:{gameType}}}:{roomId}:meta";
 
@@ -85,7 +81,6 @@ public sealed class GameStateSnapshotWorker(
                     var stateBytes = (byte[])stateTask.Result!;
                     var metaJson = metaTask.Result.IsNullOrEmpty ? "{}" : metaTask.Result.ToString();
 
-                    // Upsert snapshot
                     var existing = await dbContext.GameStateSnapshots
                         .FirstOrDefaultAsync(s => s.RoomId == roomId, ct);
 
@@ -115,23 +110,15 @@ public sealed class GameStateSnapshotWorker(
                     errorCount++;
                     logger.LogWarning(ex, "Failed to snapshot room {RoomId}", roomId);
                 }
-            }
 
-            // Save batch
-            if (snapshotCount > 0)
-            {
-                await dbContext.SaveChangesAsync(ct);
-            }
+            if (snapshotCount > 0) await dbContext.SaveChangesAsync(ct);
         }
 
         if (snapshotCount > 0)
-        {
             logger.LogInformation(
                 "Game state snapshot completed: {SnapshotCount} rooms saved, {ErrorCount} errors",
                 snapshotCount, errorCount);
-        }
 
-        // Cleanup old snapshots for rooms that no longer exist
         await CleanupStaleSnapshotsAsync(dbContext, roomIds, ct);
     }
 
@@ -143,14 +130,10 @@ public sealed class GameStateSnapshotWorker(
         var activeSet = activeRoomIds.ToHashSet();
         var cutoff = DateTimeOffset.UtcNow.AddHours(-1);
 
-        // Delete snapshots for rooms that don't exist in Redis and haven't been updated recently
         var deleted = await dbContext.GameStateSnapshots
             .Where(s => s.SnapshotAt < cutoff && !activeSet.Contains(s.RoomId))
             .ExecuteDeleteAsync(ct);
 
-        if (deleted > 0)
-        {
-            logger.LogInformation("Cleaned up {Count} stale game state snapshots", deleted);
-        }
+        if (deleted > 0) logger.LogInformation("Cleaned up {Count} stale game state snapshots", deleted);
     }
 }

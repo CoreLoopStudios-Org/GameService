@@ -39,38 +39,39 @@ public static class AdminEndpoints
             new GameTemplateDto(t.Id, t.Name, t.GameType, t.MaxPlayers, t.EntryFee, t.ConfigJson)));
     }
 
-    private static async Task<IResult> CreateTemplate([FromBody] CreateTemplateRequest req, GameDbContext db, ILoggerFactory loggerFactory)
+    private static async Task<IResult> CreateTemplate([FromBody] CreateTemplateRequest req, GameDbContext db,
+        ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger("AdminEndpoints");
-        
-        // Input validation with security checks
+
         if (!InputValidator.IsValidTemplateName(req.Name))
             return Results.BadRequest("Invalid template name (alphanumeric, spaces, hyphens only, max 100 chars)");
-        
+
         if (!InputValidator.IsValidGameType(req.GameType))
             return Results.BadRequest("Invalid game type (alphanumeric only)");
-        
+
         if (req.MaxPlayers is < 1 or > 100)
             return Results.BadRequest("Max players must be between 1 and 100");
-        
+
         if (req.EntryFee < 0 || !InputValidator.IsValidCoinAmount(req.EntryFee))
             return Results.BadRequest("Invalid entry fee");
-        
+
         if (!InputValidator.IsValidConfigJson(req.ConfigJson))
             return Results.BadRequest("Invalid configuration JSON format or exceeds size limit");
-        
+
         var template = new GameRoomTemplate
         {
-            Name = req.Name, 
-            GameType = req.GameType, 
-            MaxPlayers = req.MaxPlayers, 
+            Name = req.Name,
+            GameType = req.GameType,
+            MaxPlayers = req.MaxPlayers,
             EntryFee = req.EntryFee,
             ConfigJson = req.ConfigJson
         };
         db.RoomTemplates.Add(template);
         await db.SaveChangesAsync();
-        
-        logger.LogInformation("Template created: {TemplateId} ({Name})", template.Id, InputValidator.SanitizeForLogging(req.Name));
+
+        logger.LogInformation("Template created: {TemplateId} ({Name})", template.Id,
+            InputValidator.SanitizeForLogging(req.Name));
         return Results.Ok(template.Id);
     }
 
@@ -87,7 +88,7 @@ public static class AdminEndpoints
     {
         if (req.TemplateId <= 0)
             return Results.BadRequest("Invalid template ID");
-            
+
         var template = await db.RoomTemplates.FindAsync(req.TemplateId);
         if (template == null) return Results.NotFound("Template not found");
 
@@ -99,16 +100,15 @@ public static class AdminEndpoints
         [FromBody] CreateGameRequest req,
         IServiceProvider sp)
     {
-        // Validate inputs
         if (!InputValidator.IsValidGameType(req.GameType))
             return Results.BadRequest("Invalid game type format");
-        
+
         if (!InputValidator.IsValidCoinAmount(req.EntryFee) || req.EntryFee < 0)
             return Results.BadRequest("Invalid entry fee");
-        
+
         if (!InputValidator.IsValidConfigJson(req.ConfigJson))
             return Results.BadRequest("Invalid config JSON");
-            
+
         return await CreateGameInternal(sp, req.GameType, req.PlayerCount, req.EntryFee, req.ConfigJson);
     }
 
@@ -126,7 +126,8 @@ public static class AdminEndpoints
             return Results.BadRequest("Max players must be between 1 and 100");
 
         var roomService = sp.GetKeyedService<IGameRoomService>(gameType);
-        if (roomService == null) return Results.BadRequest($"Game type '{InputValidator.SanitizeForLogging(gameType)}' not supported");
+        if (roomService == null)
+            return Results.BadRequest($"Game type '{InputValidator.SanitizeForLogging(gameType)}' not supported");
 
         var logger = sp.GetRequiredService<ILogger<IGameRoomService>>();
         var configDict = new Dictionary<string, string>();
@@ -140,7 +141,8 @@ public static class AdminEndpoints
             }
             catch (JsonException ex)
             {
-                logger.LogWarning(ex, "Invalid JSON config provided for game type {GameType}", InputValidator.SanitizeForLogging(gameType));
+                logger.LogWarning(ex, "Invalid JSON config provided for game type {GameType}",
+                    InputValidator.SanitizeForLogging(gameType));
                 return Results.BadRequest("Invalid configuration JSON format");
             }
 
@@ -161,7 +163,7 @@ public static class AdminEndpoints
     {
         if (!InputValidator.IsValidRoomId(roomId))
             return Results.BadRequest("Invalid room ID format");
-            
+
         var gameType = await registry.GetGameTypeAsync(roomId);
         if (gameType == null) return Results.NotFound("Room not found");
         var engine = sp.GetKeyedService<IGameEngine>(gameType);
@@ -174,7 +176,7 @@ public static class AdminEndpoints
     {
         if (!InputValidator.IsValidRoomId(roomId))
             return Results.BadRequest("Invalid room ID format");
-            
+
         var gameType = await registry.GetGameTypeAsync(roomId);
         if (gameType == null) return Results.NotFound("Room not found");
         var roomService = sp.GetKeyedService<IGameRoomService>(gameType);
@@ -190,10 +192,9 @@ public static class AdminEndpoints
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50)
     {
-        // Validate optional gameType filter
         if (!string.IsNullOrEmpty(gameType) && !InputValidator.IsValidGameType(gameType))
             return Results.BadRequest("Invalid game type filter");
-            
+
         pageSize = Math.Clamp(pageSize, 1, 100);
         page = Math.Max(1, page);
 
@@ -240,7 +241,7 @@ public static class AdminEndpoints
     {
         pageSize = Math.Clamp(pageSize, 1, 100);
         page = Math.Max(1, page);
-        
+
         var players = await db.PlayerProfiles
             .AsNoTracking()
             .Where(p => !p.IsDeleted)
@@ -255,31 +256,29 @@ public static class AdminEndpoints
     }
 
     private static async Task<IResult> UpdatePlayerCoins(
-        string userId, 
+        string userId,
         [FromBody] UpdateCoinRequest req,
         HttpContext httpContext,
-        GameDbContext db, 
+        GameDbContext db,
         IGameEventPublisher publisher,
         ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger("AdminEndpoints");
-        
-        // Validate inputs
+
         if (!InputValidator.IsValidUserId(userId))
             return Results.BadRequest("Invalid user ID format");
-        
+
         if (!InputValidator.IsValidCoinAmount(req.Amount))
             return Results.BadRequest("Invalid amount");
-        
+
         var adminId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "api-key-admin";
-        
+
         var rows = await db.PlayerProfiles.Where(p => p.UserId == userId).ExecuteUpdateAsync(setters =>
             setters.SetProperty(p => p.Coins, p => p.Coins + req.Amount).SetProperty(p => p.Version, Guid.NewGuid()));
         if (rows == 0) return Results.NotFound();
-        
+
         var profile = await db.PlayerProfiles.Include(p => p.User).AsNoTracking().FirstAsync(p => p.UserId == userId);
-        
-        // Audit log the admin action
+
         var auditEntry = new WalletTransaction
         {
             UserId = userId,
@@ -292,10 +291,10 @@ public static class AdminEndpoints
         };
         db.WalletTransactions.Add(auditEntry);
         await db.SaveChangesAsync();
-        
+
         logger.LogInformation("Admin {AdminId} adjusted coins for user {UserId} by {Amount}. New balance: {Balance}",
             InputValidator.SanitizeForLogging(adminId, 50), userId, req.Amount, profile.Coins);
-        
+
         await publisher.PublishPlayerUpdatedAsync(new PlayerUpdatedMessage(profile.UserId, profile.Coins,
             profile.User?.UserName, profile.User?.Email));
         return Results.Ok(new { NewBalance = profile.Coins });
@@ -306,7 +305,7 @@ public static class AdminEndpoints
     {
         if (!InputValidator.IsValidUserId(userId))
             return Results.BadRequest("Invalid user ID format");
-            
+
         var logger = loggerFactory.CreateLogger("AdminEndpoints");
         var user = await userManager.FindByIdAsync(userId);
         if (user == null) return Results.NotFound();
@@ -317,10 +316,7 @@ public static class AdminEndpoints
                 .SetProperty(p => p.IsDeleted, true)
                 .SetProperty(p => p.DeletedAt, DateTimeOffset.UtcNow));
 
-        if (rows == 0)
-        {
-            logger.LogWarning("Attempted to delete already-deleted player {UserId}", userId);
-        }
+        if (rows == 0) logger.LogWarning("Attempted to delete already-deleted player {UserId}", userId);
 
         var result = await userManager.DeleteAsync(user);
         if (!result.Succeeded) return Results.BadRequest(result.Errors);

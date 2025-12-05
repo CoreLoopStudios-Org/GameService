@@ -22,7 +22,6 @@ public sealed class LuckyMineRoomService(
         totalTiles = Math.Clamp(totalTiles, 10, 128);
         mineCount = Math.Clamp(mineCount, 1, totalTiles - 1);
 
-        // Single player game - MaxPlayers is always 1
         var singlePlayerMeta = meta with { MaxPlayers = 1 };
 
         var state = new LuckyMineState
@@ -39,16 +38,19 @@ public sealed class LuckyMineRoomService(
         PopulateMines(ref state, totalTiles, mineCount);
 
         await _repository.SaveAsync(roomId, state, singlePlayerMeta);
-        logger.LogInformation("Created LuckyMine room {RoomId} (Mines: {Mines}/{Tiles})", roomId, mineCount, totalTiles);
+        logger.LogInformation("Created LuckyMine room {RoomId} (Mines: {Mines}/{Tiles})", roomId, mineCount,
+            totalTiles);
 
         return roomId;
     }
 
-    public async Task DeleteRoomAsync(string roomId) => await _repository.DeleteAsync(roomId);
+    public async Task DeleteRoomAsync(string roomId)
+    {
+        await _repository.DeleteAsync(roomId);
+    }
 
     public async Task<JoinRoomResult> JoinRoomAsync(string roomId, string userId)
     {
-        // Acquire lock to prevent race conditions
         if (!await _repository.TryAcquireLockAsync(roomId, TimeSpan.FromSeconds(5)))
             return JoinRoomResult.Error("Room is busy. Please try again.");
 
@@ -57,10 +59,8 @@ public sealed class LuckyMineRoomService(
             var ctx = await _repository.LoadAsync(roomId);
             if (ctx == null) return JoinRoomResult.Error("Room not found");
 
-            // Already in the game
             if (ctx.Meta.PlayerSeats.TryGetValue(userId, out var seat)) return JoinRoomResult.Ok(seat);
-            
-            // Single player - only one player allowed
+
             if (ctx.Meta.PlayerSeats.Count >= 1) return JoinRoomResult.Error("Room already has a player");
 
             var newSeats = new Dictionary<string, int>(ctx.Meta.PlayerSeats) { [userId] = 0 };
@@ -77,8 +77,8 @@ public sealed class LuckyMineRoomService(
     public async Task LeaveRoomAsync(string roomId, string userId)
     {
         if (!await _repository.TryAcquireLockAsync(roomId, TimeSpan.FromSeconds(5)))
-            return; // Best effort
-        
+            return;
+
         try
         {
             var ctx = await _repository.LoadAsync(roomId);
@@ -95,9 +95,15 @@ public sealed class LuckyMineRoomService(
         }
     }
 
-    public async Task<GameRoomMeta?> GetRoomMetaAsync(string roomId) => (await _repository.LoadAsync(roomId))?.Meta;
+    public async Task<GameRoomMeta?> GetRoomMetaAsync(string roomId)
+    {
+        return (await _repository.LoadAsync(roomId))?.Meta;
+    }
 
-    private string GenerateId() => Convert.ToHexString(RandomNumberGenerator.GetBytes(3));
+    private string GenerateId()
+    {
+        return Convert.ToHexString(RandomNumberGenerator.GetBytes(9));
+    }
 
     private void PopulateMines(ref LuckyMineState state, int totalTiles, int mineCount)
     {

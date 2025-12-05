@@ -10,10 +10,11 @@ namespace GameService.ServiceDefaults.Data;
 
 public class GameDbContext : IdentityDbContext<ApplicationUser>
 {
-    private readonly IGameEventPublisher? _publisher;
     private readonly long _initialCoins;
+    private readonly IGameEventPublisher? _publisher;
 
-    public GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPublisher? publisher = null, IOptions<GameServiceOptions>? gameOptions = null)
+    public GameDbContext(DbContextOptions<GameDbContext> options, IGameEventPublisher? publisher = null,
+        IOptions<GameServiceOptions>? gameOptions = null)
         : base(options)
     {
         _publisher = publisher;
@@ -45,55 +46,43 @@ public class GameDbContext : IdentityDbContext<ApplicationUser>
 
         builder.Entity<WalletTransaction>(b =>
         {
-            // Single column indexes
             b.HasIndex(t => t.UserId);
             b.HasIndex(t => t.CreatedAt);
             b.HasIndex(t => t.IdempotencyKey).IsUnique().HasFilter("\"IdempotencyKey\" IS NOT NULL");
             b.HasIndex(t => t.ReferenceId);
-            
-            // Composite indexes for common query patterns
-            // Query: Get user's recent transactions (sorted by date)
+
             b.HasIndex(t => new { t.UserId, t.CreatedAt })
                 .HasDatabaseName("IX_WalletTransactions_UserId_CreatedAt");
-            
-            // Query: Find transactions by reference and user
+
             b.HasIndex(t => new { t.UserId, t.ReferenceId })
                 .HasDatabaseName("IX_WalletTransactions_UserId_ReferenceId");
-            
-            // Query: Transaction type filtering for user
+
             b.HasIndex(t => new { t.UserId, t.TransactionType, t.CreatedAt })
                 .HasDatabaseName("IX_WalletTransactions_UserId_Type_CreatedAt");
         });
 
         builder.Entity<ArchivedGame>(b =>
         {
-            // Single column indexes
             b.HasIndex(g => g.RoomId);
             b.HasIndex(g => g.GameType);
             b.HasIndex(g => g.EndedAt);
-            
-            // Composite indexes for common query patterns
-            // Query: Get games by type sorted by end time (leaderboards, history)
+
             b.HasIndex(g => new { g.GameType, g.EndedAt })
                 .HasDatabaseName("IX_ArchivedGames_GameType_EndedAt");
-            
-            // Query: Find player's game history
+
             b.HasIndex(g => new { g.WinnerUserId, g.EndedAt })
                 .HasDatabaseName("IX_ArchivedGames_WinnerUserId_EndedAt");
-            
-            // Query: Game type analytics with pot amounts
+
             b.HasIndex(g => new { g.GameType, g.TotalPot })
                 .HasDatabaseName("IX_ArchivedGames_GameType_TotalPot");
         });
 
         builder.Entity<OutboxMessage>(b =>
         {
-            // Index for finding unprocessed messages (outbox processor query)
             b.HasIndex(m => new { m.ProcessedAt, m.CreatedAt })
                 .HasDatabaseName("IX_OutboxMessages_ProcessedAt_CreatedAt")
                 .HasFilter("\"ProcessedAt\" IS NULL");
-            
-            // Index for cleanup of old processed messages
+
             b.HasIndex(m => m.ProcessedAt)
                 .HasDatabaseName("IX_OutboxMessages_ProcessedAt");
         });
@@ -271,38 +260,38 @@ public class ArchivedGame
 }
 
 /// <summary>
-/// Transactional outbox message for reliable event publishing.
-/// Messages are written to the database in the same transaction as the business operation,
-/// then processed asynchronously by a background worker.
+///     Transactional outbox message for reliable event publishing.
+///     Messages are written to the database in the same transaction as the business operation,
+///     then processed asynchronously by a background worker.
 /// </summary>
 public class OutboxMessage
 {
     public long Id { get; set; }
-    
+
     /// <summary>Type of event (e.g., "PlayerUpdated", "GameEnded")</summary>
     [MaxLength(100)]
     public required string EventType { get; set; }
-    
+
     /// <summary>JSON payload of the event</summary>
     public required string Payload { get; set; }
-    
+
     /// <summary>When the message was created</summary>
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
-    
+
     /// <summary>When the message was successfully published (null if not yet processed)</summary>
     public DateTimeOffset? ProcessedAt { get; set; }
-    
+
     /// <summary>Number of processing attempts</summary>
     public int Attempts { get; set; }
-    
+
     /// <summary>Last error message if processing failed</summary>
     [MaxLength(500)]
     public string? LastError { get; set; }
 }
 
 /// <summary>
-/// Periodic snapshot of active game states from Redis to PostgreSQL.
-/// Provides disaster recovery if Redis data is lost.
+///     Periodic snapshot of active game states from Redis to PostgreSQL.
+///     Provides disaster recovery if Redis data is lost.
 /// </summary>
 public class GameStateSnapshot
 {
