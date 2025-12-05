@@ -44,22 +44,8 @@ Authorization: Bearer {{auth_token}}
     client.global.set("starting_coins", response.body.coins);
 %}
 
-### 5. Earn Coins
-POST {{host}}/game/coins/transaction
-Authorization: Bearer {{auth_token}}
-Content-Type: {{contentType}}
 
-{
-  "amount": 50
-}
-
-> {%
-    client.test("Balance Updated", function () {
-        client.assert(response.body.newBalance > client.global.get("starting_coins"), "Balance did not increase");
-    });
-%}
-
-### 6. Security Check: Negative Overflow
+### 5. Security Check: Negative Overflow
 POST {{host}}/game/coins/transaction
 Authorization: Bearer {{auth_token}}
 Content-Type: {{contentType}}

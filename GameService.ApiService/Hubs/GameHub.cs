@@ -243,21 +243,45 @@ public class GameHub(
         var meta = await roomService.GetRoomMetaAsync(roomId);
         if (meta == null) return new JoinRoomResponse(false, -1, "Room not found");
         
-        // Deduct entry fee if required (and player not already in room)
+        // Reserve entry fee atomically (if required and player not already in room)
+        EntryFeeReservation? reservation = null;
         if (meta.EntryFee > 0 && !meta.PlayerSeats.ContainsKey(UserId))
         {
             using var scope = serviceProvider.CreateScope();
             var economyService = scope.ServiceProvider.GetRequiredService<IEconomyService>();
-            var feeResult = await economyService.DeductEntryFeeAsync(UserId, meta.EntryFee, roomId);
-            if (!feeResult.Success)
+            
+            reservation = await economyService.ReserveEntryFeeAsync(UserId, meta.EntryFee, roomId);
+            if (!reservation.Success)
             {
-                return new JoinRoomResponse(false, -1, feeResult.ErrorMessage ?? "Insufficient funds for entry fee");
+                return new JoinRoomResponse(false, -1, reservation.ErrorMessage ?? "Insufficient funds for entry fee");
             }
-            logger.LogInformation("Player {UserId} paid entry fee {Fee} for room {RoomId}", UserId, meta.EntryFee, roomId);
         }
 
+        // Try to join the room
         var result = await roomService.JoinRoomAsync(roomId, UserId);
-        if (!result.Success) return new JoinRoomResponse(false, -1, result.ErrorMessage);
+        
+        if (!result.Success)
+        {
+            // Failed to join - refund the reserved entry fee
+            if (reservation != null)
+            {
+                using var scope = serviceProvider.CreateScope();
+                var economyService = scope.ServiceProvider.GetRequiredService<IEconomyService>();
+                await economyService.RefundEntryFeeAsync(reservation);
+                logger.LogInformation("Refunded entry fee for player {UserId} - failed to join room {RoomId}: {Error}", 
+                    UserId, roomId, result.ErrorMessage);
+            }
+            return new JoinRoomResponse(false, -1, result.ErrorMessage);
+        }
+
+        // Successfully joined - commit the entry fee reservation
+        if (reservation != null)
+        {
+            using var scope = serviceProvider.CreateScope();
+            var economyService = scope.ServiceProvider.GetRequiredService<IEconomyService>();
+            await economyService.CommitEntryFeeAsync(reservation);
+            logger.LogInformation("Player {UserId} paid entry fee {Fee} for room {RoomId}", UserId, meta.EntryFee, roomId);
+        }
 
         // Track user→room mapping for O(1) disconnect lookup
         await roomRegistry.SetUserRoomAsync(UserId, roomId);

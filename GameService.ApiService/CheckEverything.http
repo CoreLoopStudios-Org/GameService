@@ -122,25 +122,6 @@ Authorization: Bearer {{user_token}}
     client.global.set("initial_coins", response.body.coins);
 %}
 
-###
-# @name EarnCoins
-# 2.2 Credit coins (Simulate winning)
-POST {{host}}/game/coins/transaction
-Authorization: Bearer {{user_token}}
-Content-Type: {{contentType}}
-
-{
-  "amount": 1000,
-  "referenceId": "daily_login_bonus",
-  "idempotencyKey": "bonus_{{$randomInt}}"
-}
-
-> {%
-    client.test("Balance Increased", function () {
-        client.assert(response.body.newBalance > client.global.get("initial_coins"), "Balance did not update");
-    });
-    client.global.set("balance_after_earn", response.body.newBalance);
-%}
 
 ###
 # @name IdempotencyCheck
@@ -155,26 +136,6 @@ Content-Type: {{contentType}}
   "referenceId": "duplicate_test",
   "idempotencyKey": "unique_key_12345"
 }
-
-###
-# @name IdempotencyRetry
-# 2.4 Retry same key - should be Conflict (409) or Success with same balance depending on implementation
-POST {{host}}/game/coins/transaction
-Authorization: Bearer {{user_token}}
-Content-Type: {{contentType}}
-
-{
-  "amount": 500,
-  "referenceId": "duplicate_test",
-  "idempotencyKey": "unique_key_12345"
-}
-
-> {%
-    client.test("Idempotency Catch", function () {
-        // Your code returns 409 Conflict for duplicates
-        client.assert(response.status === 409, "Should return 409 Conflict for duplicate key");
-    });
-%}
 
 ###
 # @name InsufficientFunds

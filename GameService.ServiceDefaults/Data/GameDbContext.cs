@@ -24,6 +24,7 @@ public class GameDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<GameRoomTemplate> RoomTemplates => Set<GameRoomTemplate>();
     public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
     public DbSet<ArchivedGame> ArchivedGames => Set<ArchivedGame>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -82,6 +83,18 @@ public class GameDbContext : IdentityDbContext<ApplicationUser>
             // Query: Game type analytics with pot amounts
             b.HasIndex(g => new { g.GameType, g.TotalPot })
                 .HasDatabaseName("IX_ArchivedGames_GameType_TotalPot");
+        });
+
+        builder.Entity<OutboxMessage>(b =>
+        {
+            // Index for finding unprocessed messages (outbox processor query)
+            b.HasIndex(m => new { m.ProcessedAt, m.CreatedAt })
+                .HasDatabaseName("IX_OutboxMessages_ProcessedAt_CreatedAt")
+                .HasFilter("\"ProcessedAt\" IS NULL");
+            
+            // Index for cleanup of old processed messages
+            b.HasIndex(m => m.ProcessedAt)
+                .HasDatabaseName("IX_OutboxMessages_ProcessedAt");
         });
 
         builder.Entity<GameRoomTemplate>().HasData(
@@ -247,4 +260,34 @@ public class ArchivedGame
 
     public DateTimeOffset StartedAt { get; set; }
     public DateTimeOffset EndedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+/// <summary>
+/// Transactional outbox message for reliable event publishing.
+/// Messages are written to the database in the same transaction as the business operation,
+/// then processed asynchronously by a background worker.
+/// </summary>
+public class OutboxMessage
+{
+    public long Id { get; set; }
+    
+    /// <summary>Type of event (e.g., "PlayerUpdated", "GameEnded")</summary>
+    [MaxLength(100)]
+    public required string EventType { get; set; }
+    
+    /// <summary>JSON payload of the event</summary>
+    public required string Payload { get; set; }
+    
+    /// <summary>When the message was created</summary>
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    
+    /// <summary>When the message was successfully published (null if not yet processed)</summary>
+    public DateTimeOffset? ProcessedAt { get; set; }
+    
+    /// <summary>Number of processing attempts</summary>
+    public int Attempts { get; set; }
+    
+    /// <summary>Last error message if processing failed</summary>
+    [MaxLength(500)]
+    public string? LastError { get; set; }
 }

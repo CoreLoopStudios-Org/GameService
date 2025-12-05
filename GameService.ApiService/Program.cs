@@ -139,12 +139,14 @@ builder.Services.AddSingleton<IGameBroadcaster, HubGameBroadcaster>();
 
 builder.Services.AddScoped<IPlayerService, PlayerService>();
 builder.Services.AddScoped<IEconomyService, EconomyService>();
+builder.Services.AddScoped<IGameArchivalService, GameArchivalService>();
 
 builder.Services.AddGameModule<LudoModule>();
 builder.Services.AddGameModule<LuckyMineModule>();
 
 builder.Services.AddHostedService<GameLoopWorker>();
 builder.Services.AddHostedService<IdempotencyCleanupWorker>();
+builder.Services.AddHostedService<OutboxProcessorWorker>();
 
 builder.Services.AddSignalR()
     .AddStackExchangeRedis(builder.Configuration.GetConnectionString("cache") ??
