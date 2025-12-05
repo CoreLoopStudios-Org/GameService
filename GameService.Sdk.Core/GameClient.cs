@@ -84,7 +84,7 @@ public sealed class GameClient : IAsyncDisposable
         string accessToken,
         CancellationToken cancellationToken = default)
     {
-        var hubUrl = baseUrl.TrimEnd('/') + "/gamehub";
+        var hubUrl = baseUrl.TrimEnd('/') + "/hubs/game";
 
         var hub = new HubConnectionBuilder()
             .WithUrl(hubUrl, options =>

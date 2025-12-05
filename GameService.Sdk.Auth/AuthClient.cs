@@ -140,7 +140,7 @@ public sealed class AuthClient : IDisposable
     /// </summary>
     public async Task<PlayerProfile?> GetProfileAsync(string accessToken)
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/players/me");
+        var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/game/me");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
         var response = await _http.SendAsync(request);

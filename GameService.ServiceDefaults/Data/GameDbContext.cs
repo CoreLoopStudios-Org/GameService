@@ -98,9 +98,20 @@ public class GameDbContext : IdentityDbContext<ApplicationUser>
             new GameRoomTemplate
                 { Id = 1, Name = "Classic Ludo (4P)", GameType = "Ludo", MaxPlayers = 4, EntryFee = 100 },
             new GameRoomTemplate { Id = 2, Name = "1v1 Ludo", GameType = "Ludo", MaxPlayers = 2, EntryFee = 500 },
+            new GameRoomTemplate { Id = 5, Name = "StandardLudo", GameType = "Ludo", MaxPlayers = 4, EntryFee = 0 },
             new GameRoomTemplate
             {
                 Id = 3, Name = "Standard Mines", GameType = "LuckyMine", MaxPlayers = 1, EntryFee = 10,
+                ConfigJson = "{\"TotalMines\":5,\"TotalTiles\":25}"
+            },
+            new GameRoomTemplate
+            {
+                Id = 6, Name = "3Mines", GameType = "LuckyMine", MaxPlayers = 1, EntryFee = 0,
+                ConfigJson = "{\"TotalMines\":3,\"TotalTiles\":25}"
+            },
+            new GameRoomTemplate
+            {
+                Id = 7, Name = "5Mines", GameType = "LuckyMine", MaxPlayers = 1, EntryFee = 0,
                 ConfigJson = "{\"TotalMines\":5,\"TotalTiles\":25}"
             },
             new GameRoomTemplate
