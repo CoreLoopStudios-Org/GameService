@@ -96,4 +96,14 @@ public interface IRoomRegistry
     ///     Update room's last activity timestamp
     /// </summary>
     Task UpdateRoomActivityAsync(string roomId, string gameType);
+
+    /// <summary>
+    ///     Get the total number of currently connected users
+    /// </summary>
+    Task<long> GetOnlinePlayerCountAsync();
+
+    /// <summary>
+    ///     Get a set of UserIds that are currently connected
+    /// </summary>
+    Task<HashSet<string>> GetOnlineUserIdsAsync();
 }

@@ -176,6 +176,17 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
         await _db.SortedSetAddAsync(ActivityIndexKey(gameType), roomId, score);
     }
 
+    public async Task<long> GetOnlinePlayerCountAsync()
+    {
+        return await _db.HashLengthAsync(UserConnectionCountKey);
+    }
+
+    public async Task<HashSet<string>> GetOnlineUserIdsAsync()
+    {
+        var keys = await _db.HashKeysAsync(UserConnectionCountKey);
+        return keys.Select(k => k.ToString()).ToHashSet();
+    }
+
     private static string GameTypeIndexKey(string gameType)
     {
         return $"index:rooms:{gameType}";

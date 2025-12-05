@@ -9,7 +9,7 @@ public record struct PlayerProfileResponse(string UserId, long Coins, string? Ac
 /// </summary>
 public record PagedResult<T>(IEnumerable<T> Items, int TotalCount, int Page, int PageSize);
 
-public record AdminPlayerDto(int ProfileId, string UserId, string Username, string Email, long Coins);
+public record AdminPlayerDto(int ProfileId, string UserId, string Username, string Email, long Coins, bool IsOnline = false);
 
 public enum PlayerChangeType
 {
@@ -71,3 +71,18 @@ public record QuickMatchResponse(string RoomId, string Action);
 ///     Leaderboard entry DTO
 /// </summary>
 public record LeaderboardEntryDto(string Username, long Coins);
+
+/// <summary>
+///     High-level system statistics for the admin dashboard
+/// </summary>
+public record DashboardStatsDto(
+    int OnlinePlayers,
+    int ActiveGames,
+    int TotalRegisteredUsers,
+    long TotalEconomyCoins
+);
+
+/// <summary>
+///     Request to send a system-wide broadcast
+/// </summary>
+public record BroadcastRequest(string Message, string Type = "Info");

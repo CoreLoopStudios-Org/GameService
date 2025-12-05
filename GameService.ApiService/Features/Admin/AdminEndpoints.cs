@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using GameService.ApiService.Hubs;
 using GameService.GameCore;
 using GameService.ServiceDefaults;
 using GameService.ServiceDefaults.Data;
@@ -7,6 +8,7 @@ using GameService.ServiceDefaults.DTOs;
 using GameService.ServiceDefaults.Security;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace GameService.ApiService.Features.Admin;
@@ -16,6 +18,9 @@ public static class AdminEndpoints
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/admin").RequireAuthorization("AdminPolicy");
+
+        group.MapGet("/stats", GetDashboardStats);
+        group.MapPost("/broadcast", SendSystemBroadcast);
 
         group.MapGet("/templates", GetTemplates);
         group.MapPost("/templates", CreateTemplate);
@@ -31,6 +36,52 @@ public static class AdminEndpoints
         group.MapGet("/players/{userId}/history", GetPlayerHistory);
         group.MapPost("/players/{userId}/coins", UpdatePlayerCoins);
         group.MapDelete("/players/{userId}", DeletePlayer);
+    }
+
+    private static async Task<IResult> GetDashboardStats(
+        GameDbContext db, 
+        IRoomRegistry registry)
+    {
+        // Run registry queries in parallel (safe - different service)
+        var onlineTask = registry.GetOnlinePlayerCountAsync();
+        var roomsTask = registry.GetAllRoomIdsAsync();
+        
+        // Run DB queries sequentially (DbContext is not thread-safe)
+        var usersCount = await db.Users.CountAsync();
+        var totalCoins = await db.PlayerProfiles.SumAsync(p => p.Coins);
+
+        await Task.WhenAll(onlineTask, roomsTask);
+
+        var stats = new DashboardStatsDto(
+            (int)onlineTask.Result,
+            roomsTask.Result.Count,
+            usersCount,
+            totalCoins
+        );
+
+        return Results.Ok(stats);
+    }
+
+    private static async Task<IResult> SendSystemBroadcast(
+        [FromBody] BroadcastRequest req,
+        IHubContext<GameHub, IGameClient> hubContext,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("AdminEndpoints");
+        
+        if (string.IsNullOrWhiteSpace(req.Message))
+            return Results.BadRequest("Message cannot be empty");
+
+        var payload = new ChatMessagePayload(
+            GameCoreConstants.SystemUserId, 
+            "SYSTEM", 
+            req.Message, 
+            DateTimeOffset.UtcNow);
+
+        await hubContext.Clients.All.ChatMessage(payload);
+
+        logger.LogInformation("Admin broadcast sent: {Message}", req.Message);
+        return Results.Ok(new { Sent = true });
     }
 
     private static async Task<IResult> GetTemplates(GameDbContext db)
@@ -231,7 +282,10 @@ public static class AdminEndpoints
         return Results.Ok(allGames);
     }
 
-    private static async Task<IResult> GetPlayers(GameDbContext db, [FromQuery] int page = 1,
+    private static async Task<IResult> GetPlayers(
+        GameDbContext db, 
+        IRoomRegistry registry,
+        [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -244,10 +298,27 @@ public static class AdminEndpoints
             .OrderBy(p => p.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(p =>
-                new AdminPlayerDto(p.Id, p.UserId, p.User.UserName ?? "Unknown", p.User.Email ?? "No Email", p.Coins))
+            .Select(p => new {
+                p.Id,
+                p.UserId,
+                UserName = p.User.UserName ?? "Unknown",
+                Email = p.User.Email ?? "No Email",
+                p.Coins
+            })
             .ToListAsync();
-        return Results.Ok(players);
+
+        var onlineUserIds = await registry.GetOnlineUserIdsAsync();
+
+        var dtos = players.Select(p => new AdminPlayerDto(
+            p.Id, 
+            p.UserId, 
+            p.UserName, 
+            p.Email, 
+            p.Coins,
+            onlineUserIds.Contains(p.UserId)
+        )).ToList();
+
+        return Results.Ok(dtos);
     }
 
     private static async Task<IResult> GetPlayerHistory(

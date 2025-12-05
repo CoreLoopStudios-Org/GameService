@@ -6,6 +6,24 @@ namespace GameService.Web.Services;
 
 public class GameAdminService(HttpClient http)
 {
+    public async Task<DashboardStatsDto?> GetDashboardStatsAsync()
+    {
+        try
+        {
+            return await http.GetFromJsonAsync<DashboardStatsDto>("/admin/stats");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task SendBroadcastAsync(string message)
+    {
+        var response = await http.PostAsJsonAsync("/admin/broadcast", new BroadcastRequest(message));
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task<List<GameRoomDto>> GetActiveGamesAsync()
     {
         return await http.GetFromJsonAsync<List<GameRoomDto>>("/admin/games") ?? [];
