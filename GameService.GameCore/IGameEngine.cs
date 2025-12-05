@@ -81,6 +81,12 @@ public sealed record GameActionResult
     public bool ShouldBroadcast { get; init; }
     public object? NewState { get; init; }
     public IReadOnlyList<GameEvent> Events { get; init; } = [];
+    
+    /// <summary>
+    /// If set, indicates the game has ended and should be archived.
+    /// The GameHub will call the archival service when this is populated.
+    /// </summary>
+    public GameEndedInfo? GameEnded { get; init; }
 
     public static GameActionResult Error(string message)
     {
@@ -96,7 +102,34 @@ public sealed record GameActionResult
     {
         return new GameActionResult { Success = true, ShouldBroadcast = false, Events = events };
     }
+    
+    public static GameActionResult GameOver(
+        object? state, 
+        GameEndedInfo gameEndedInfo,
+        params GameEvent[] events)
+    {
+        return new GameActionResult 
+        { 
+            Success = true, 
+            ShouldBroadcast = true, 
+            NewState = state, 
+            Events = events,
+            GameEnded = gameEndedInfo
+        };
+    }
 }
+
+/// <summary>
+/// Information needed to archive a completed game
+/// </summary>
+public sealed record GameEndedInfo(
+    string RoomId,
+    string GameType,
+    IReadOnlyDictionary<string, int> PlayerSeats,
+    string? WinnerUserId,
+    long TotalPot,
+    DateTimeOffset StartedAt,
+    IReadOnlyList<string>? WinnerRanking = null);
 
 /// <summary>
 ///     Event emitted by game engine for broadcasting to clients and audit logging

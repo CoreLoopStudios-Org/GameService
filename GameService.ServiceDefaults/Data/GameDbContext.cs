@@ -25,6 +25,7 @@ public class GameDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
     public DbSet<ArchivedGame> ArchivedGames => Set<ArchivedGame>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<GameStateSnapshot> GameStateSnapshots => Set<GameStateSnapshot>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -95,6 +96,13 @@ public class GameDbContext : IdentityDbContext<ApplicationUser>
             // Index for cleanup of old processed messages
             b.HasIndex(m => m.ProcessedAt)
                 .HasDatabaseName("IX_OutboxMessages_ProcessedAt");
+        });
+
+        builder.Entity<GameStateSnapshot>(b =>
+        {
+            b.HasIndex(s => s.RoomId).IsUnique();
+            b.HasIndex(s => s.GameType);
+            b.HasIndex(s => s.SnapshotAt);
         });
 
         builder.Entity<GameRoomTemplate>().HasData(
@@ -290,4 +298,30 @@ public class OutboxMessage
     /// <summary>Last error message if processing failed</summary>
     [MaxLength(500)]
     public string? LastError { get; set; }
+}
+
+/// <summary>
+/// Periodic snapshot of active game states from Redis to PostgreSQL.
+/// Provides disaster recovery if Redis data is lost.
+/// </summary>
+public class GameStateSnapshot
+{
+    public long Id { get; set; }
+
+    /// <summary>Room ID in Redis</summary>
+    [MaxLength(50)]
+    public required string RoomId { get; set; }
+
+    /// <summary>Game type (Ludo, LuckyMine, etc.)</summary>
+    [MaxLength(50)]
+    public required string GameType { get; set; }
+
+    /// <summary>Binary state data (same format as Redis)</summary>
+    public required byte[] StateData { get; set; }
+
+    /// <summary>Serialized GameRoomMeta JSON</summary>
+    public required string MetaJson { get; set; }
+
+    /// <summary>When this snapshot was taken</summary>
+    public DateTimeOffset SnapshotAt { get; set; } = DateTimeOffset.UtcNow;
 }

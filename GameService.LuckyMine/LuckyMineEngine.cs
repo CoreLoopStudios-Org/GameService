@@ -88,6 +88,20 @@ public sealed class LuckyMineEngine(
             events.Add(new GameEvent("HitMine", new { UserId = userId, Tile = tileIndex, LostAmount = state.EntryCost }));
             events.Add(new GameEvent("GameOver", new { UserId = userId, Result = "Lost", FinalWinnings = 0 }));
             logger.LogInformation("Room {Room} Player {Player} hit mine at {Tile}", roomId, userId, tileIndex);
+            
+            await _repository.SaveAsync(roomId, state, ctx.Meta);
+            
+            // Game over - trigger archival
+            return GameActionResult.GameOver(
+                MapToDto(ref state),
+                new GameEndedInfo(
+                    roomId,
+                    GameType,
+                    ctx.Meta.PlayerSeats,
+                    null, // No winner - hit mine
+                    ctx.Meta.EntryFee,
+                    ctx.Meta.TurnStartedAt),
+                events.ToArray());
         }
         else
         {
@@ -139,13 +153,18 @@ public sealed class LuckyMineEngine(
 
         await _repository.SaveAsync(roomId, state, ctx.Meta);
 
-        return new GameActionResult
-        {
-            Success = true,
-            ShouldBroadcast = true,
-            NewState = MapToDto(ref state),
-            Events = events
-        };
+        // Game over with winner - trigger archival
+        return GameActionResult.GameOver(
+            MapToDto(ref state),
+            new GameEndedInfo(
+                roomId,
+                GameType,
+                ctx.Meta.PlayerSeats,
+                userId, // Winner
+                ctx.Meta.EntryFee,
+                ctx.Meta.TurnStartedAt,
+                new[] { userId }), // Winner ranking
+            events.ToArray());
     }
 
     private long CalculateWinnings(ref LuckyMineState state)

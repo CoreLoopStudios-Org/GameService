@@ -133,6 +133,7 @@ builder.Services.Configure<IdentityOptions>(options =>
 builder.Services.AddScoped<IPasswordHasher<ApplicationUser>, Argon2PasswordHasher>();
 
 builder.Services.AddSingleton<IRoomRegistry, RedisRoomRegistry>();
+builder.Services.AddSingleton<IStateMigrationRegistry, StateMigrationRegistry>();
 builder.Services.AddSingleton<IGameRepositoryFactory, RedisGameRepositoryFactory>();
 builder.Services.AddSingleton<IGameEventPublisher, RedisGameEventPublisher>();
 builder.Services.AddSingleton<IGameBroadcaster, HubGameBroadcaster>();
@@ -147,6 +148,7 @@ builder.Services.AddGameModule<LuckyMineModule>();
 builder.Services.AddHostedService<GameLoopWorker>();
 builder.Services.AddHostedService<IdempotencyCleanupWorker>();
 builder.Services.AddHostedService<OutboxProcessorWorker>();
+builder.Services.AddHostedService<GameStateSnapshotWorker>();
 
 builder.Services.AddSignalR()
     .AddStackExchangeRedis(builder.Configuration.GetConnectionString("cache") ??

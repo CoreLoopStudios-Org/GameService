@@ -173,7 +173,46 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         await _repository.SaveAsync(roomId, engine.State, newMeta);
 
         var finalState = engine.State;
-        return new GameActionResult { Success = true, ShouldBroadcast = true, Events = events, NewState = MapToDto(ref finalState, newMeta) };
+        var stateDto = MapToDto(ref finalState, newMeta);
+        
+        // If game ended, include archival info
+        if (res.Status.HasFlag(LudoStatus.ErrorGameEnded))
+        {
+            var winnerRanking = GetWinnerRanking(ref finalState, ctx.Meta);
+            var winnerUserId = winnerRanking.Count > 0 ? winnerRanking[0] : null;
+            var totalPot = ctx.Meta.EntryFee * ctx.Meta.PlayerSeats.Count;
+            
+            return GameActionResult.GameOver(
+                stateDto,
+                new GameEndedInfo(
+                    roomId,
+                    GameType,
+                    ctx.Meta.PlayerSeats,
+                    winnerUserId,
+                    totalPot,
+                    ctx.Meta.TurnStartedAt, // Use as game start approximation
+                    winnerRanking),
+                events.ToArray());
+        }
+        
+        return new GameActionResult { Success = true, ShouldBroadcast = true, Events = events, NewState = stateDto };
+    }
+    
+    private List<string> GetWinnerRanking(ref LudoState state, GameRoomMeta meta)
+    {
+        var ranking = new List<string>();
+        var seatToUser = meta.PlayerSeats.ToDictionary(kvp => kvp.Value, kvp => kvp.Key);
+        
+        for (int i = 0; i < 4; i++)
+        {
+            var seatIndex = (int)state.Winners[i];
+            if (seatIndex != 255 && seatToUser.TryGetValue(seatIndex, out var userId))
+            {
+                ranking.Add(userId);
+            }
+        }
+        
+        return ranking;
     }
 
     private bool ValidateTurn(GameContext<LudoState> ctx, string userId, out int seat)

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using GameService.ApiService.Features.Economy;
+using GameService.ApiService.Features.Games;
 using GameService.GameCore;
 using GameService.ServiceDefaults.Configuration;
 using GameService.ServiceDefaults.Data;
@@ -83,43 +84,71 @@ public class GameHub(
             var gameType = await roomRegistry.GetGameTypeAsync(roomId);
             if (gameType != null)
             {
-                // Store in Redis with TTL for automatic cleanup
-                await roomRegistry.SetDisconnectedPlayerAsync(
-                    UserId, 
-                    roomId, 
-                    TimeSpan.FromSeconds(_reconnectionGracePeriodSeconds + 1));
-
-                await Clients.Group(roomId).SendAsync("PlayerDisconnected",
-                    new PlayerDisconnectedEvent(UserId, UserName, _reconnectionGracePeriodSeconds));
-
-                // Schedule cleanup after grace period using fire-and-forget
-                // This works across instances because Redis TTL handles the state
-                var capturedUserId = UserId;
-                var capturedUserName = UserName;
-                var capturedRoomId = roomId;
-                var capturedGameType = gameType;
-                var gracePeriod = _reconnectionGracePeriodSeconds;
-                
-                _ = Task.Delay(TimeSpan.FromSeconds(gracePeriod + 2)).ContinueWith(async _ =>
+                // Acquire lock to prevent race condition with reconnection
+                var lockKey = $"disconnect:{UserId}";
+                if (await roomRegistry.TryAcquireLockAsync(lockKey, TimeSpan.FromSeconds(_reconnectionGracePeriodSeconds + 5)))
                 {
-                    // Check if player is still disconnected (Redis key still exists = reconnected)
-                    var stillDisconnected = await roomRegistry.TryGetAndRemoveDisconnectedPlayerAsync(capturedUserId);
-                    if (stillDisconnected == capturedRoomId)
+                    try
                     {
-                        var roomService = serviceProvider.GetKeyedService<IGameRoomService>(capturedGameType);
-                        if (roomService != null) 
-                            await roomService.LeaveRoomAsync(capturedRoomId, capturedUserId);
+                        // Store in Redis with TTL for automatic cleanup
+                        await roomRegistry.SetDisconnectedPlayerAsync(
+                            UserId, 
+                            roomId, 
+                            TimeSpan.FromSeconds(_reconnectionGracePeriodSeconds + 1));
 
-                        await roomRegistry.RemoveUserRoomAsync(capturedUserId);
+                        await Clients.Group(roomId).SendAsync("PlayerDisconnected",
+                            new PlayerDisconnectedEvent(UserId, UserName, _reconnectionGracePeriodSeconds));
 
-                        var hubContext = serviceProvider.GetRequiredService<IHubContext<GameHub>>();
-                        await hubContext.Clients.Group(capturedRoomId).SendAsync("PlayerLeft",
-                            new PlayerLeftEvent(capturedUserId, capturedUserName));
+                        // Schedule cleanup after grace period using fire-and-forget
+                        // This works across instances because Redis TTL handles the state
+                        var capturedUserId = UserId;
+                        var capturedUserName = UserName;
+                        var capturedRoomId = roomId;
+                        var capturedGameType = gameType;
+                        var gracePeriod = _reconnectionGracePeriodSeconds;
+                        var capturedLockKey = lockKey;
+                        
+                        _ = Task.Delay(TimeSpan.FromSeconds(gracePeriod + 2)).ContinueWith(async _ =>
+                        {
+                            // Re-acquire lock for the cleanup operation
+                            if (!await roomRegistry.TryAcquireLockAsync(capturedLockKey, TimeSpan.FromSeconds(5)))
+                            {
+                                // Another operation is handling this user
+                                return;
+                            }
+                            
+                            try
+                            {
+                                // Check if player is still disconnected (Redis key still exists = not reconnected)
+                                var stillDisconnected = await roomRegistry.TryGetAndRemoveDisconnectedPlayerAsync(capturedUserId);
+                                if (stillDisconnected == capturedRoomId)
+                                {
+                                    var roomService = serviceProvider.GetKeyedService<IGameRoomService>(capturedGameType);
+                                    if (roomService != null) 
+                                        await roomService.LeaveRoomAsync(capturedRoomId, capturedUserId);
 
-                        logger.LogInformation("Player {UserId} grace period expired, removed from room {RoomId}",
-                            capturedUserId, capturedRoomId);
+                                    await roomRegistry.RemoveUserRoomAsync(capturedUserId);
+
+                                    var hubContext = serviceProvider.GetRequiredService<IHubContext<GameHub>>();
+                                    await hubContext.Clients.Group(capturedRoomId).SendAsync("PlayerLeft",
+                                        new PlayerLeftEvent(capturedUserId, capturedUserName));
+
+                                    logger.LogInformation("Player {UserId} grace period expired, removed from room {RoomId}",
+                                        capturedUserId, capturedRoomId);
+                                }
+                            }
+                            finally
+                            {
+                                await roomRegistry.ReleaseLockAsync(capturedLockKey);
+                            }
+                        });
                     }
-                });
+                    finally
+                    {
+                        // Release the initial lock after setting up the delayed task
+                        await roomRegistry.ReleaseLockAsync(lockKey);
+                    }
+                }
             }
         }
 
@@ -359,6 +388,37 @@ public class GameHub(
             // Update room activity for timeout tracking
             if (result.Success)
                 await roomRegistry.UpdateRoomActivityAsync(roomId, gameType);
+            
+            // Handle game archival if game ended
+            if (result.GameEnded != null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var scope = serviceProvider.CreateScope();
+                        var archivalService = scope.ServiceProvider.GetRequiredService<IGameArchivalService>();
+                        var info = result.GameEnded;
+                        
+                        await archivalService.EndGameAsync(
+                            info.RoomId,
+                            info.GameType,
+                            result.NewState ?? new { },
+                            info.PlayerSeats,
+                            info.WinnerUserId,
+                            info.TotalPot,
+                            info.StartedAt,
+                            info.WinnerRanking);
+                        
+                        logger.LogInformation("Game archived: {RoomId} (Type: {GameType}, Winner: {Winner})",
+                            info.RoomId, info.GameType, info.WinnerUserId ?? "None");
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Failed to archive game {RoomId}", roomId);
+                    }
+                });
+            }
 
             return result;
         }
