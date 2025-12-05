@@ -54,6 +54,29 @@ public sealed class LuckyMineEngine(
         };
     }
 
+    public async Task<IReadOnlyList<GameStateResponse>> GetManyStatesAsync(IReadOnlyList<string> roomIds)
+    {
+        if (roomIds.Count == 0) return [];
+        
+        var contexts = await _repository.LoadManyAsync(roomIds);
+        var results = new List<GameStateResponse>(contexts.Count);
+        
+        foreach (var ctx in contexts)
+        {
+            var state = ctx.State;
+            results.Add(new GameStateResponse
+            {
+                RoomId = ctx.RoomId,
+                GameType = GameType,
+                Meta = ctx.Meta,
+                State = MapToDto(ref state),
+                LegalMoves = state.Status == (byte)LuckyMineStatus.Active ? _legalActions : _noActions
+            });
+        }
+        
+        return results;
+    }
+
     private async Task<GameActionResult> HandleClickAsync(string roomId, string userId, int tileIndex)
     {
         var ctx = await _repository.LoadAsync(roomId);

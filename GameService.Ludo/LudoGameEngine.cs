@@ -132,6 +132,29 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         };
     }
 
+    public async Task<IReadOnlyList<GameStateResponse>> GetManyStatesAsync(IReadOnlyList<string> roomIds)
+    {
+        if (roomIds.Count == 0) return [];
+        
+        var contexts = await _repository.LoadManyAsync(roomIds);
+        var results = new List<GameStateResponse>(contexts.Count);
+        
+        foreach (var ctx in contexts)
+        {
+            var localState = ctx.State;
+            results.Add(new GameStateResponse
+            {
+                RoomId = ctx.RoomId,
+                GameType = GameType,
+                Meta = ctx.Meta,
+                State = MapToDto(ref localState, ctx.Meta),
+                LegalMoves = []
+            });
+        }
+        
+        return results;
+    }
+
     private async Task<GameActionResult> HandleRollAsync(string roomId, string userId)
     {
         var ctx = await _repository.LoadAsync(roomId);

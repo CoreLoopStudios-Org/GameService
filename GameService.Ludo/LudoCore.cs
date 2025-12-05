@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 
 namespace GameService.Ludo;
 
@@ -330,6 +331,7 @@ public class ServerDiceRoller : IDiceRoller
 {
     public byte Roll()
     {
-        return (byte)Random.Shared.Next(1, 7);
+        // Use cryptographically secure RNG for money games
+        return (byte)RandomNumberGenerator.GetInt32(1, 7);
     }
 }

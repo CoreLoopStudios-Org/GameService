@@ -45,8 +45,28 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
 
     public async Task<IReadOnlyList<string>> GetAllRoomIdsAsync()
     {
-        var entries = await _db.HashKeysAsync(GlobalRegistryKey);
-        return entries.Select(e => e.ToString()).ToList();
+        // Use HSCAN instead of HKEYS to avoid blocking Redis on large datasets
+        var result = new List<string>();
+        var cursor = 0L;
+        do
+        {
+            var scanResult = await _db.HashScanAsync(GlobalRegistryKey, "*", 100, cursor).ToArrayAsync();
+            foreach (var entry in scanResult)
+            {
+                result.Add(entry.Name.ToString());
+            }
+            cursor = scanResult.Length > 0 ? scanResult[^1].Name.GetHashCode() : 0;
+            // HashScanAsync uses IAsyncEnumerable, so we break after first iteration
+            break;
+        } while (cursor != 0);
+        
+        // Re-scan with IAsyncEnumerable for complete results
+        result.Clear();
+        await foreach (var entry in _db.HashScanAsync(GlobalRegistryKey, "*", 100))
+        {
+            result.Add(entry.Name.ToString());
+        }
+        return result;
     }
 
     public async Task<IReadOnlyList<string>> GetRoomIdsByGameTypeAsync(string gameType)

@@ -156,16 +156,17 @@ public class SecurityOptions
 public class DatabaseOptions
 {
     /// <summary>
-    ///     Maximum number of connections in the pool (default: 100)
+    ///     Maximum number of connections in the pool (default: 500)
     ///     Higher values support more concurrent requests but use more memory.
+    ///     For high-scale deployments, use PgBouncer in front of Postgres.
     /// </summary>
-    public int MaxPoolSize { get; set; } = 100;
+    public int MaxPoolSize { get; set; } = 500;
 
     /// <summary>
-    ///     Minimum number of connections to keep in the pool (default: 10)
+    ///     Minimum number of connections to keep in the pool (default: 25)
     ///     Prevents cold-start latency for initial requests.
     /// </summary>
-    public int MinPoolSize { get; set; } = 10;
+    public int MinPoolSize { get; set; } = 25;
 
     /// <summary>
     ///     Time in seconds before an idle connection is closed (default: 300 = 5 min)

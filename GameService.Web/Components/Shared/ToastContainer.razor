@@ -37,6 +37,8 @@
 
 @code {
     private readonly List<ToastMessage> toasts = new();
+    private CancellationTokenSource _cts = new();
+    private bool _disposed;
 
     protected override void OnInitialized()
     {
@@ -45,21 +47,35 @@
 
     private void ShowToast(string title, string message, ToastLevel level)
     {
+        if (_disposed) return;
+        
         var toast = new ToastMessage { Title = title, Message = message, Level = level };
         toasts.Add(toast);
         StateHasChanged();
 
-        _ = Task.Delay(4000).ContinueWith(_ => { InvokeAsync(() => Remove(toast)); });
+        // Use cancellation token to safely handle disposal
+        var token = _cts.Token;
+        _ = Task.Delay(4000, token).ContinueWith(_ => 
+        { 
+            if (!_disposed)
+            {
+                InvokeAsync(() => Remove(toast)); 
+            }
+        }, TaskContinuationOptions.NotOnCanceled);
     }
 
     private void Remove(ToastMessage toast)
     {
+        if (_disposed) return;
         toasts.Remove(toast);
         StateHasChanged();
     }
 
     public void Dispose()
     {
+        _disposed = true;
+        _cts.Cancel();
+        _cts.Dispose();
         ToastService.OnShow -= ShowToast;
     }
 

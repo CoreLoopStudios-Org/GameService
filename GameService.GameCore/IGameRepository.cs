@@ -9,6 +9,13 @@ namespace GameService.GameCore;
 public interface IGameRepository<TState> where TState : struct
 {
     Task<GameContext<TState>?> LoadAsync(string roomId);
+    
+    /// <summary>
+    ///     Load multiple game states in a single Redis roundtrip using MGET.
+    ///     Much more efficient than multiple LoadAsync calls for admin dashboards.
+    /// </summary>
+    Task<IReadOnlyList<GameContext<TState>>> LoadManyAsync(IReadOnlyList<string> roomIds);
+    
     Task SaveAsync(string roomId, TState state, GameRoomMeta meta);
     Task DeleteAsync(string roomId);
     Task<bool> TryAcquireLockAsync(string roomId, TimeSpan timeout);

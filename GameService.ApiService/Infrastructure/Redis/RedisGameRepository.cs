@@ -114,6 +114,45 @@ public sealed class RedisGameRepository<TState>(
         await roomRegistry.RegisterRoomAsync(roomId, gameType);
     }
 
+    public async Task<IReadOnlyList<GameContext<TState>>> LoadManyAsync(IReadOnlyList<string> roomIds)
+    {
+        if (roomIds.Count == 0) return [];
+
+        // Build all keys for MGET - interleave state and meta keys
+        var stateKeys = roomIds.Select(StateKey).ToArray();
+        var metaKeys = roomIds.Select(MetaKey).ToArray();
+        
+        // Use MGET for single-roundtrip batch fetch
+        var stateValues = await _db.StringGetAsync(stateKeys.Select(k => (RedisKey)k).ToArray());
+        var metaValues = await _db.StringGetAsync(metaKeys.Select(k => (RedisKey)k).ToArray());
+
+        var results = new List<GameContext<TState>>(roomIds.Count);
+
+        for (var i = 0; i < roomIds.Count; i++)
+        {
+            if (stateValues[i].IsNullOrEmpty) continue;
+
+            try
+            {
+                var bytes = (byte[])stateValues[i]!;
+                var state = DeserializeStateWithMigration(bytes, roomIds[i]);
+
+                var meta = metaValues[i].IsNullOrEmpty
+                    ? new GameRoomMeta { GameType = gameType }
+                    : JsonSerializer.Deserialize<GameRoomMeta>(metaValues[i].ToString()) ??
+                      new GameRoomMeta { GameType = gameType };
+
+                results.Add(new GameContext<TState>(roomIds[i], state, meta));
+            }
+            catch (InvalidOperationException ex)
+            {
+                logger.LogError(ex, "State corruption detected for room {RoomId} during batch load.", roomIds[i]);
+            }
+        }
+
+        return results;
+    }
+
     public async Task DeleteAsync(string roomId)
     {
         await _db.KeyDeleteAsync([StateKey(roomId), MetaKey(roomId), LockKey(roomId)]);
@@ -165,17 +204,20 @@ public sealed class RedisGameRepository<TState>(
 
     private string StateKey(string roomId)
     {
-        return $"{{game:{gameType}}}:{roomId}:state";
+        // Shard by roomId to distribute across Redis cluster nodes
+        return $"game:{gameType}:{{{roomId}}}:state";
     }
 
     private string MetaKey(string roomId)
     {
-        return $"{{game:{gameType}}}:{roomId}:meta";
+        // Shard by roomId to distribute across Redis cluster nodes
+        return $"game:{gameType}:{{{roomId}}}:meta";
     }
 
     private string LockKey(string roomId)
     {
-        return $"{{game:{gameType}}}:{roomId}:lock";
+        // Shard by roomId to distribute across Redis cluster nodes
+        return $"game:{gameType}:{{{roomId}}}:lock";
     }
 
     private static byte[] SerializeState(TState state)

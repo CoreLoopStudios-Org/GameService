@@ -27,6 +27,12 @@ public interface IGameEngine
     ///     Get the current game state for a room
     /// </summary>
     Task<GameStateResponse?> GetStateAsync(string roomId);
+    
+    /// <summary>
+    ///     Get multiple game states in a single Redis roundtrip.
+    ///     More efficient than multiple GetStateAsync calls for admin dashboards.
+    /// </summary>
+    Task<IReadOnlyList<GameStateResponse>> GetManyStatesAsync(IReadOnlyList<string> roomIds);
 }
 
 /// <summary>

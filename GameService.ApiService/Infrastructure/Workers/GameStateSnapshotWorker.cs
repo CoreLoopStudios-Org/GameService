@@ -66,8 +66,8 @@ public sealed class GameStateSnapshotWorker(
                     var gameType = await roomRegistry.GetGameTypeAsync(roomId);
                     if (gameType == null) continue;
 
-                    var stateKey = $"{{game:{gameType}}}:{roomId}:state";
-                    var metaKey = $"{{game:{gameType}}}:{roomId}:meta";
+                    var stateKey = $"game:{gameType}:{{{roomId}}}:state";
+                    var metaKey = $"game:{gameType}:{{{roomId}}}:meta";
 
                     var redisBatch = db.CreateBatch();
                     var stateTask = redisBatch.StringGetAsync(stateKey);
