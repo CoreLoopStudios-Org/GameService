@@ -90,6 +90,7 @@ public class RedisLogStreamer(
                 }
                 catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
                 {
+                    // Expected: cancellation timeout for throttling interval - continue to flush pending updates
                 }
 
                 if (pendingUpdates.Count > 0 && DateTime.UtcNow - lastFlush >= ThrottleInterval)

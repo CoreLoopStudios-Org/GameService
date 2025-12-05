@@ -218,7 +218,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
     private bool ValidateTurn(GameContext<LudoState> ctx, string userId, out int seat)
     {
         seat = -1;
-        if (userId == "ADMIN" || userId == "SYSTEM") { seat = ctx.State.CurrentPlayer; return true; }
+        if (userId == GameCoreConstants.AdminUserId || userId == GameCoreConstants.SystemUserId) { seat = ctx.State.CurrentPlayer; return true; }
         return ctx.Meta.PlayerSeats.TryGetValue(userId, out seat) && seat == ctx.State.CurrentPlayer;
     }
 

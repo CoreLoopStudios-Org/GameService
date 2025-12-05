@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
@@ -24,6 +25,7 @@ public static class Extensions
 
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
+            // AddStandardResilienceHandler includes: Retry, Circuit Breaker, Timeout, Rate Limiter
             http.AddStandardResilienceHandler();
 
             http.AddServiceDiscovery();
@@ -76,23 +78,44 @@ public static class Extensions
     public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder)
         where TBuilder : IHostApplicationBuilder
     {
-        builder.Services.AddHealthChecks()
+        var healthChecks = builder.Services.AddHealthChecks()
             .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
+
+        // Add Redis health check if connection string is configured
+        var redisConnectionString = builder.Configuration.GetConnectionString("cache");
+        if (!string.IsNullOrEmpty(redisConnectionString))
+        {
+            healthChecks.AddRedis(redisConnectionString, name: "redis", tags: ["ready"]);
+        }
+
+        // Add PostgreSQL health check if connection string is configured
+        var postgresConnectionString = builder.Configuration.GetConnectionString("postgresdb");
+        if (!string.IsNullOrEmpty(postgresConnectionString))
+        {
+            healthChecks.AddNpgSql(postgresConnectionString, name: "postgresql", tags: ["ready"]);
+        }
 
         return builder;
     }
 
     public static WebApplication MapDefaultEndpoints(this WebApplication app)
     {
-        if (app.Environment.IsDevelopment())
+        // Map health checks in all environments for production readiness
+        app.MapHealthChecks(HealthEndpointPath, new HealthCheckOptions
         {
-            app.MapHealthChecks(HealthEndpointPath);
+            Predicate = _ => true // Include all health checks
+        });
 
-            app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
-            {
-                Predicate = r => r.Tags.Contains("live")
-            });
-        }
+        app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
+        {
+            Predicate = r => r.Tags.Contains("live")
+        });
+
+        // Readiness endpoint - only checks external dependencies (Redis, PostgreSQL)
+        app.MapHealthChecks("/ready", new HealthCheckOptions
+        {
+            Predicate = r => r.Tags.Contains("ready")
+        });
 
         return app;
     }

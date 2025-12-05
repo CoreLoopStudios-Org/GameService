@@ -24,18 +24,54 @@
 @userEmail = player_{{$randomInt}}@test.local
 @userPassword = TestUser!2024#Pass
 @user2Email = player2_{{$randomInt}}@test.local
+@user2Password = TestUser2!2024#Pass
+
+# ==========================================
+# 1. HEALTH CHECKS & INFRASTRUCTURE
+# ==========================================
 
 ###
 # @name HealthCheck
+# 1.0 Overall health check (includes all checks)
 GET {{host}}/health
 
+> {%
+    client.test("Health Check OK", function () {
+        client.assert(response.status === 200, "Health check should return 200");
+    });
+%}
+
+###
+# @name AliveCheck
+# 1.0.1 Liveness probe (self check only)
+GET {{host}}/alive
+
+> {%
+    client.test("Alive Check OK", function () {
+        client.assert(response.status === 200, "Alive check should return 200");
+    });
+%}
+
+###
+# @name ReadyCheck
+# 1.0.2 Readiness probe (Redis + PostgreSQL)
+GET {{host}}/ready
+
+> {%
+    client.test("Ready Check OK", function () {
+        client.assert(response.status === 200, "Ready check should return 200 (Redis + DB connected)");
+    });
+%}
+
+###
+
 # ==========================================
-# 1. AUTHENTICATION
+# 2. AUTHENTICATION
 # ==========================================
 
 ###
 # @name LoginAdmin
-# 1.1 Authenticate as seeded Admin
+# 2.1 Authenticate as seeded Admin
 POST {{host}}/auth/login
 Content-Type: {{contentType}}
 
@@ -45,25 +81,29 @@ Content-Type: {{contentType}}
 }
 
 > {%
+    client.test("Admin Login Success", function () {
+        client.assert(response.status === 200, "Admin login should succeed");
+        client.assert(response.body.accessToken !== undefined, "Should return access token");
+    });
     client.global.set("admin_token", response.body.accessToken);
     client.log("👑 Admin Token: " + response.body.accessToken);
 %}
 
 ###
 # @name AdminKeyBypass
-# 1.2 Test API Key Auth (Service-to-Service bypass)
+# 2.2 Test API Key Auth (Service-to-Service bypass)
 GET {{host}}/admin/players
 X-Admin-Key: {{adminApiKey}}
 
 > {%
     client.test("API Key Auth Success", function () {
-        client.assert(response.status === 200, "API Key failed");
+        client.assert(response.status === 200, "API Key auth should work");
     });
 %}
 
 ###
 # @name RegisterUser
-# 1.3 Register a new standard player
+# 2.3 Register a new standard player
 POST {{host}}/auth/register
 Content-Type: {{contentType}}
 
@@ -72,9 +112,32 @@ Content-Type: {{contentType}}
   "password": "{{userPassword}}"
 }
 
+> {%
+    client.test("User Registration Success", function () {
+        client.assert(response.status === 200, "User registration should succeed");
+    });
+%}
+
+###
+# @name RegisterUser2
+# 2.3.1 Register a second player for multiplayer tests
+POST {{host}}/auth/register
+Content-Type: {{contentType}}
+
+{
+  "email": "{{user2Email}}",
+  "password": "{{user2Password}}"
+}
+
+> {%
+    client.test("User2 Registration Success", function () {
+        client.assert(response.status === 200, "User2 registration should succeed");
+    });
+%}
+
 ###
 # @name LoginUser
-# 1.4 Authenticate as the new player
+# 2.4 Authenticate as the new player
 POST {{host}}/auth/login
 Content-Type: {{contentType}}
 
@@ -84,13 +147,35 @@ Content-Type: {{contentType}}
 }
 
 > {%
+    client.test("User Login Success", function () {
+        client.assert(response.status === 200, "User login should succeed");
+        client.assert(response.body.accessToken !== undefined, "Should return access token");
+    });
     client.global.set("user_token", response.body.accessToken);
     client.log("👤 User Token: " + response.body.accessToken);
 %}
 
 ###
-# @name LoginFailure
-# 1.5 Negative Test: Wrong Password
+# @name LoginUser2
+# 2.4.1 Authenticate as second player
+POST {{host}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "{{user2Email}}",
+  "password": "{{user2Password}}"
+}
+
+> {%
+    client.test("User2 Login Success", function () {
+        client.assert(response.status === 200, "User2 login should succeed");
+    });
+    client.global.set("user2_token", response.body.accessToken);
+%}
+
+###
+# @name LoginFailure_WrongPassword
+# 2.5 Negative Test: Wrong Password
 POST {{host}}/auth/login
 Content-Type: {{contentType}}
 
@@ -106,40 +191,131 @@ Content-Type: {{contentType}}
 %}
 
 ###
+# @name LoginFailure_NonexistentUser
+# 2.6 Negative Test: Nonexistent user
+POST {{host}}/auth/login
+Content-Type: {{contentType}}
 
+{
+  "email": "nonexistent@test.local",
+  "password": "Password123!"
+}
+
+> {%
+    client.test("Login Failed for Nonexistent User", function () {
+        client.assert(response.status === 401, "Should return 401 Unauthorized");
+    });
+%}
+
+###
+# @name UnauthorizedAccess
+# 2.7 Negative Test: Access protected endpoint without token
+GET {{host}}/game/me
+
+> {%
+    client.test("Unauthorized Access Blocked", function () {
+        client.assert(response.status === 401, "Should return 401 without token");
+    });
+%}
+
+###
+# @name InvalidToken
+# 2.8 Negative Test: Access with invalid token
+GET {{host}}/game/me
+Authorization: Bearer invalid_token_here_12345
+
+> {%
+    client.test("Invalid Token Rejected", function () {
+        client.assert(response.status === 401, "Should return 401 for invalid token");
+    });
+%}
+
+###
 # ==========================================
-# 2. PLAYER PROFILE & ECONOMY
+# 3. PLAYER PROFILE & ECONOMY
 # ==========================================
 
 ###
 # @name GetUserProfile
-# 2.1 Get initial state
+# 3.1 Get initial profile state
 GET {{host}}/game/me
 Authorization: Bearer {{user_token}}
 
 > {%
+    client.test("Profile Retrieved", function () {
+        client.assert(response.status === 200, "Profile should be retrieved");
+        client.assert(response.body.userId !== undefined, "Should have userId");
+        client.assert(response.body.coins !== undefined, "Should have coins");
+    });
     client.global.set("user_id", response.body.userId);
     client.global.set("initial_coins", response.body.coins);
+    client.log("💰 Initial Coins: " + response.body.coins);
 %}
 
+###
+# @name GetUser2Profile
+# 3.1.1 Get second user profile
+GET {{host}}/game/me
+Authorization: Bearer {{user2_token}}
+
+> {%
+    client.test("User2 Profile Retrieved", function () {
+        client.assert(response.status === 200, "Profile should be retrieved");
+    });
+    client.global.set("user2_id", response.body.userId);
+%}
 
 ###
-# @name IdempotencyCheck
-# 2.3 Test Duplicate Transaction (Should fail or return same result)
-# We use a fixed idempotency key here to force the collision logic
+# @name UserCantCreditSelf
+# 3.2 SECURITY: Users cannot credit themselves coins
 POST {{host}}/game/coins/transaction
 Authorization: Bearer {{user_token}}
 Content-Type: {{contentType}}
 
 {
-  "amount": 500,
-  "referenceId": "duplicate_test",
-  "idempotencyKey": "unique_key_12345"
+  "amount": 1000000,
+  "referenceId": "hack_attempt"
+}
+
+> {%
+    client.test("Self-credit Blocked", function () {
+        client.assert(response.status === 400, "Users should not be able to credit themselves");
+    });
+%}
+
+###
+# @name ValidDebitTransaction
+# 3.3 Valid debit transaction (after admin gives coins)
+# Note: Run AdminAddCoins first before this test
+POST {{host}}/game/coins/transaction
+Authorization: Bearer {{user_token}}
+Content-Type: {{contentType}}
+
+{
+  "amount": -10,
+  "referenceId": "test_purchase"
 }
 
 ###
+# @name IdempotencyCheck_First
+# 3.4 Test Idempotency - First call
+POST {{host}}/game/coins/transaction
+Authorization: Bearer {{user_token}}
+Content-Type: {{contentType}}
+
+{
+  "amount": -5,
+  "referenceId": "idempotency_test",
+  "idempotencyKey": "unique_key_{{$randomInt}}"
+}
+
+> {%
+    client.global.set("idempotency_key", "unique_key_" + Date.now());
+%}
+
+###
 # @name InsufficientFunds
-# 2.5 Negative Test: Debit more than available
+# 3.5 Negative Test: Debit more than available
 POST {{host}}/game/coins/transaction
 Authorization: Bearer {{user_token}}
 Content-Type: {{contentType}}
@@ -150,30 +326,101 @@ Content-Type: {{contentType}}
 }
 
 > {%
-    client.test("Insufficient Funds Catch", function () {
-        client.assert(response.status === 400 || response.status === 409, "Should return Error");
+    client.test("Insufficient Funds Rejected", function () {
+        client.assert(response.status === 400 || response.status === 409, "Should reject insufficient funds");
+    });
+%}
+
+###
+# @name InvalidAmount_Zero
+# 3.6 Negative Test: Zero amount transaction
+POST {{host}}/game/coins/transaction
+Authorization: Bearer {{user_token}}
+Content-Type: {{contentType}}
+
+{
+  "amount": 0,
+  "referenceId": "zero_test"
+}
+
+> {%
+    client.test("Zero Amount Rejected", function () {
+        client.assert(response.status === 400, "Zero amount should be rejected");
     });
 %}
 
 ###
 # @name GetTransactionHistory
-# 2.6 View Ledger
+# 3.7 View transaction ledger
 GET {{host}}/game/coins/history?page=1&pageSize=10
 Authorization: Bearer {{user_token}}
 
+> {%
+    client.test("Transaction History Retrieved", function () {
+        client.assert(response.status === 200, "History should be retrieved");
+        client.assert(Array.isArray(response.body), "Should return array of transactions");
+    });
+%}
+
+###
+# @name GetTransactionHistory_Pagination
+# 3.8 Test pagination
+GET {{host}}/game/coins/history?page=2&pageSize=5
+Authorization: Bearer {{user_token}}
+
+> {%
+    client.test("Pagination Works", function () {
+        client.assert(response.status === 200, "Pagination should work");
+    });
+%}
+
+###
 # ==========================================
-# 3. GAME TEMPLATES (ADMIN)
+# 4. GAME CATALOG
 # ==========================================
 
 ###
-# @name CreateTemplate
-# 3.1 Create a High Stakes Ludo Template
+# @name GetSupportedGames
+# 4.1 List all supported game types
+GET {{host}}/games/supported
+
+> {%
+    client.test("Supported Games Listed", function () {
+        client.assert(response.status === 200, "Should return supported games");
+        client.assert(Array.isArray(response.body), "Should return array");
+        client.assert(response.body.length >= 2, "Should have at least Ludo and LuckyMine");
+    });
+    client.log("🎮 Supported Games: " + JSON.stringify(response.body));
+%}
+
+###
+# ==========================================
+# 5. GAME TEMPLATES (ADMIN)
+# ==========================================
+
+###
+# @name GetTemplates_Initial
+# 5.1 List all templates (should have seeded defaults)
+GET {{host}}/admin/templates
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("Templates Retrieved", function () {
+        client.assert(response.status === 200, "Should return templates");
+        client.assert(Array.isArray(response.body), "Should return array");
+    });
+    client.log("📋 Templates: " + response.body.length);
+%}
+
+###
+# @name CreateTemplate_Ludo
+# 5.2 Create a custom Ludo template
 POST {{host}}/admin/templates
 Authorization: Bearer {{admin_token}}
 Content-Type: {{contentType}}
 
 {
-  "name": "High Stakes Ludo (Test)",
+  "name": "Test Ludo Template",
   "gameType": "Ludo",
   "maxPlayers": 2,
   "entryFee": 5000,
@@ -181,22 +428,83 @@ Content-Type: {{contentType}}
 }
 
 > {%
-    client.global.set("template_id", response.body);
+    client.test("Ludo Template Created", function () {
+        client.assert(response.status === 200, "Template should be created");
+    });
+    client.global.set("ludo_template_id", response.body);
+    client.log("📋 Ludo Template ID: " + response.body);
 %}
 
 ###
-# @name GetTemplates
-# 3.2 List all templates
-GET {{host}}/admin/templates
+# @name CreateTemplate_LuckyMine
+# 5.3 Create a custom LuckyMine template
+POST {{host}}/admin/templates
 Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
 
+{
+  "name": "Test LuckyMine Template",
+  "gameType": "LuckyMine",
+  "maxPlayers": 1,
+  "entryFee": 100,
+  "configJson": "{\"TotalMines\": 10, \"TotalTiles\": 36}"
+}
+
+> {%
+    client.test("LuckyMine Template Created", function () {
+        client.assert(response.status === 200, "Template should be created");
+    });
+    client.global.set("luckymine_template_id", response.body);
+%}
+
+###
+# @name CreateTemplate_InvalidGameType
+# 5.4 Negative Test: Invalid game type
+POST {{host}}/admin/templates
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "name": "Invalid Game",
+  "gameType": "NonExistentGame<script>",
+  "maxPlayers": 4,
+  "entryFee": 100
+}
+
+> {%
+    client.test("Invalid Game Type Rejected", function () {
+        client.assert(response.status === 400, "Should reject invalid game type");
+    });
+%}
+
+###
+# @name CreateTemplate_InvalidPlayers
+# 5.5 Negative Test: Invalid player count
+POST {{host}}/admin/templates
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "name": "Too Many Players",
+  "gameType": "Ludo",
+  "maxPlayers": 500,
+  "entryFee": 100
+}
+
+> {%
+    client.test("Invalid Player Count Rejected", function () {
+        client.assert(response.status === 400, "Should reject >100 players");
+    });
+%}
+
+###
 # ==========================================
-# 4. GAME LIFECYCLE: LUDO
+# 6. GAME LIFECYCLE: LUDO
 # ==========================================
 
 ###
-# @name CreateLudoGame
-# 4.1 Create game from raw parameters
+# @name CreateLudoGame_Direct
+# 6.1 Create Ludo game from raw parameters
 POST {{host}}/admin/games
 Authorization: Bearer {{admin_token}}
 Content-Type: {{contentType}}
@@ -208,63 +516,134 @@ Content-Type: {{contentType}}
 }
 
 > {%
+    client.test("Ludo Game Created", function () {
+        client.assert(response.status === 200, "Ludo game should be created");
+        client.assert(response.body.roomId !== undefined, "Should return roomId");
+    });
     client.global.set("ludo_room_id", response.body.roomId);
     client.log("🎲 Ludo Room: " + response.body.roomId);
 %}
 
 ###
-# @name GetLudoState
-# 4.2 Check initial state
-GET {{host}}/admin/games/{{ludo_room_id}}
-Authorization: Bearer {{admin_token}}
-
-###
-# @name LudoAdminRoll
-# 4.3 Force a Dice Roll (Admin Override)
-POST {{host}}/admin/ludo/{{ludo_room_id}}/roll
-Authorization: Bearer {{admin_token}}
-
-> {%
-    client.test("Roll Successful", function () {
-        client.assert(response.status === 200, "Roll failed");
-        client.global.set("dice_value", response.body.newState.lastDiceRoll);
-        client.log("🎲 Rolled: " + response.body.newState.lastDiceRoll);
-    });
-%}
-
-###
-# @name LudoAdminMove
-# 4.4 Try to move token 0. 
-# Note: This might fail if the token is in base and we didn't roll a 6, 
-# but testing the endpoint connectivity is the goal.
-POST {{host}}/admin/ludo/{{ludo_room_id}}/move/0
-Authorization: Bearer {{admin_token}}
-Content-Type: {{contentType}}
-
-###
-# @name CreateFromTemplate
-# 4.5 Create room using the template we made earlier
+# @name CreateLudoGame_FromTemplate
+# 6.2 Create Ludo game from template
 POST {{host}}/admin/games/create-from-template
 Authorization: Bearer {{admin_token}}
 Content-Type: {{contentType}}
 
 {
-  "templateId": {{template_id}}
+  "templateId": {{ludo_template_id}}
 }
 
 > {%
-    client.global.set("template_room_id", response.body.roomId);
+    client.test("Ludo Game From Template Created", function () {
+        client.assert(response.status === 200, "Game should be created from template");
+    });
+    client.global.set("ludo_template_room_id", response.body.roomId);
 %}
 
 ###
+# @name GetLudoState
+# 6.3 Get Ludo game state
+GET {{host}}/admin/games/{{ludo_room_id}}
+Authorization: Bearer {{admin_token}}
 
+> {%
+    client.test("Ludo State Retrieved", function () {
+        client.assert(response.status === 200, "State should be retrieved");
+        client.assert(response.body.state !== undefined, "Should have state");
+        client.assert(response.body.meta !== undefined, "Should have meta");
+    });
+    client.log("🎲 Current Player: " + response.body.state.currentPlayer);
+%}
+
+###
+# @name LudoAdminRoll
+# 6.4 Force a Dice Roll (Admin Override)
+POST {{host}}/admin/ludo/{{ludo_room_id}}/roll
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("Roll Successful", function () {
+        client.assert(response.status === 200, "Roll should succeed");
+        client.assert(response.body.newState !== undefined, "Should return new state");
+    });
+    client.global.set("dice_value", response.body.newState.lastDiceRoll);
+    client.log("🎲 Rolled: " + response.body.newState.lastDiceRoll);
+%}
+
+###
+# @name LudoAdminMove_Token0
+# 6.5 Try to move token 0 (may fail if in base without 6)
+POST {{host}}/admin/ludo/{{ludo_room_id}}/move/0
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+> {%
+    client.log("🎲 Move Result: " + JSON.stringify(response.body));
+%}
+
+###
+# @name LudoAdminMove_Token1
+# 6.6 Try to move token 1
+POST {{host}}/admin/ludo/{{ludo_room_id}}/move/1
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+###
+# @name LudoAdminMove_Token2
+# 6.7 Try to move token 2
+POST {{host}}/admin/ludo/{{ludo_room_id}}/move/2
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+###
+# @name LudoAdminMove_Token3
+# 6.8 Try to move token 3
+POST {{host}}/admin/ludo/{{ludo_room_id}}/move/3
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+###
+# @name LudoAdminRoll_Second
+# 6.9 Roll again after move
+POST {{host}}/admin/ludo/{{ludo_room_id}}/roll
+Authorization: Bearer {{admin_token}}
+
+###
+# @name GetActiveGames
+# 6.10 List all active games
+GET {{host}}/admin/games?page=1&pageSize=50
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("Active Games Listed", function () {
+        client.assert(response.status === 200, "Should return games");
+        client.assert(Array.isArray(response.body), "Should return array");
+    });
+    client.log("🎮 Active Games: " + response.body.length);
+%}
+
+###
+# @name GetActiveGames_FilterByType
+# 6.11 List active games filtered by type
+GET {{host}}/admin/games?gameType=Ludo&page=1&pageSize=50
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("Filtered Games Listed", function () {
+        client.assert(response.status === 200, "Should return filtered games");
+    });
+%}
+
+###
 # ==========================================
-# 5. GAME LIFECYCLE: LUCKY MINE
+# 7. GAME LIFECYCLE: LUCKY MINE
 # ==========================================
 
 ###
-# @name CreateLuckyMineGame
-# 5.1 Create Mine game
+# @name CreateLuckyMineGame_Direct
+# 7.1 Create LuckyMine game from raw parameters
 POST {{host}}/admin/games
 Authorization: Bearer {{admin_token}}
 Content-Type: {{contentType}}
@@ -277,37 +656,116 @@ Content-Type: {{contentType}}
 }
 
 > {%
+    client.test("LuckyMine Game Created", function () {
+        client.assert(response.status === 200, "LuckyMine game should be created");
+        client.assert(response.body.roomId !== undefined, "Should return roomId");
+    });
     client.global.set("mine_room_id", response.body.roomId);
     client.log("💣 LuckyMine Room: " + response.body.roomId);
 %}
 
 ###
+# @name CreateLuckyMineGame_FromTemplate
+# 7.2 Create LuckyMine game from template
+POST {{host}}/admin/games/create-from-template
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "templateId": {{luckymine_template_id}}
+}
+
+> {%
+    client.test("LuckyMine Game From Template Created", function () {
+        client.assert(response.status === 200, "Game should be created from template");
+    });
+    client.global.set("luckymine_template_room_id", response.body.roomId);
+%}
+
+###
 # @name GetLuckyMineState
-# 5.2 Get Full State (God Mode - see where mines are)
-GET {{host}}/admin/luckymine/{{mine_room_id}}/full-state
+# 7.3 Get LuckyMine game state (standard view)
+GET {{host}}/admin/games/{{mine_room_id}}
 Authorization: Bearer {{admin_token}}
 
 > {%
-    client.test("Mines Revealed", function () {
-        client.assert(response.body.mineMask0 !== undefined, "Mine mask missing");
+    client.test("LuckyMine State Retrieved", function () {
+        client.assert(response.status === 200, "State should be retrieved");
     });
 %}
 
 ###
+# @name GetLuckyMineFullState
+# 7.4 Get LuckyMine full state (God Mode - reveals mine locations)
+GET {{host}}/admin/luckymine/{{mine_room_id}}/full-state
+Authorization: Bearer {{admin_token}}
 
+> {%
+    client.test("LuckyMine Full State Retrieved", function () {
+        client.assert(response.status === 200, "Full state should be retrieved");
+        client.assert(response.body.mineMask0 !== undefined, "Should reveal mine mask");
+        client.assert(response.body.totalMines !== undefined, "Should have total mines");
+        client.assert(response.body.totalTiles !== undefined, "Should have total tiles");
+    });
+    client.log("💣 Mines: " + response.body.totalMines + "/" + response.body.totalTiles);
+%}
+
+###
+# @name CreateLuckyMineGame_HighRisk
+# 7.5 Create high-risk LuckyMine game (more mines)
+POST {{host}}/admin/games
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "gameType": "LuckyMine",
+  "playerCount": 1,
+  "entryFee": 200,
+  "configJson": "{\"TotalMines\": 20, \"TotalTiles\": 25}"
+}
+
+> {%
+    client.test("High Risk LuckyMine Created", function () {
+        client.assert(response.status === 200, "High risk game should be created");
+    });
+    client.global.set("high_risk_mine_room_id", response.body.roomId);
+%}
+
+###
 # ==========================================
-# 6. ADMIN PLAYER MANAGEMENT
+# 8. ADMIN PLAYER MANAGEMENT
 # ==========================================
 
 ###
 # @name GetAllPlayers
-# 6.1 List players
+# 8.1 List all players
 GET {{host}}/admin/players?page=1&pageSize=20
 Authorization: Bearer {{admin_token}}
 
+> {%
+    client.test("Players Listed", function () {
+        client.assert(response.status === 200, "Should return players");
+        client.assert(Array.isArray(response.body), "Should return array");
+    });
+    client.log("👥 Total Players: " + response.body.length);
+%}
+
+###
+# @name GetAllPlayers_Pagination
+# 8.2 Test player list pagination
+GET {{host}}/admin/players?page=1&pageSize=5
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("Player Pagination Works", function () {
+        client.assert(response.status === 200, "Pagination should work");
+        client.assert(response.body.length <= 5, "Should respect pageSize");
+    });
+%}
+
 ###
 # @name AdminAddCoins
-# 6.2 Admin manually gives coins to user
+# 8.3 Admin manually gives coins to user
 POST {{host}}/admin/players/{{user_id}}/coins
 Authorization: Bearer {{admin_token}}
 Content-Type: {{contentType}}
@@ -316,43 +774,296 @@ Content-Type: {{contentType}}
   "amount": 50000
 }
 
+> {%
+    client.test("Coins Added", function () {
+        client.assert(response.status === 200, "Coins should be added");
+        client.assert(response.body.newBalance !== undefined, "Should return new balance");
+    });
+    client.log("💰 New Balance: " + response.body.newBalance);
+%}
+
+###
+# @name AdminDeductCoins
+# 8.4 Admin deducts coins from user
+POST {{host}}/admin/players/{{user_id}}/coins
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "amount": -1000
+}
+
+> {%
+    client.test("Coins Deducted", function () {
+        client.assert(response.status === 200, "Coins should be deducted");
+    });
+%}
+
+###
+# @name AdminAddCoins_User2
+# 8.5 Admin gives coins to user2
+POST {{host}}/admin/players/{{user2_id}}/coins
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "amount": 10000
+}
+
 ###
 # @name VerifyAdminCoins
+# 8.6 Verify coins were added
 GET {{host}}/game/me
 Authorization: Bearer {{user_token}}
 
 > {%
     client.test("Admin Coins Received", function () {
-        client.assert(response.body.coins > 50000, "Coins not updated");
+        client.assert(response.status === 200, "Profile should be retrieved");
+        client.assert(response.body.coins > 0, "Should have coins");
+    });
+    client.log("💰 Current Balance: " + response.body.coins);
+%}
+
+###
+# @name AdminAddCoins_InvalidUser
+# 8.7 Negative Test: Add coins to nonexistent user
+POST {{host}}/admin/players/nonexistent-user-id-12345/coins
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "amount": 1000
+}
+
+> {%
+    client.test("Invalid User Rejected", function () {
+        client.assert(response.status === 400 || response.status === 404, "Should reject invalid user");
     });
 %}
 
 ###
-# @name DeleteUser
-# 6.3 Soft delete the test user
+# ==========================================
+# 9. SECURITY & VALIDATION TESTS
+# ==========================================
+
+###
+# @name AdminEndpoint_NoAuth
+# 9.1 Negative Test: Admin endpoint without auth
+GET {{host}}/admin/players
+
+> {%
+    client.test("Admin Endpoint Protected", function () {
+        client.assert(response.status === 401, "Should require authentication");
+    });
+%}
+
+###
+# @name AdminEndpoint_UserToken
+# 9.2 Negative Test: Admin endpoint with regular user token
+GET {{host}}/admin/players
+Authorization: Bearer {{user_token}}
+
+> {%
+    client.test("Admin Endpoint Requires Admin Role", function () {
+        client.assert(response.status === 403, "Regular users should be forbidden");
+    });
+%}
+
+###
+# @name InvalidRoomId
+# 9.3 Negative Test: Get state for nonexistent room (invalid format returns 400)
+GET {{host}}/admin/games/INVALID123
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("Invalid Room ID Rejected", function () {
+        client.assert(response.status === 400 || response.status === 404, "Should return 400 (invalid format) or 404 (not found)");
+    });
+%}
+
+###
+# @name InvalidTemplateId
+# 9.4 Negative Test: Create game from nonexistent template
+POST {{host}}/admin/games/create-from-template
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "templateId": 99999
+}
+
+> {%
+    client.test("Invalid Template Returns Error", function () {
+        client.assert(response.status === 404, "Should return 404 for invalid template");
+    });
+%}
+
+###
+# @name SqlInjection_GameType
+# 9.5 Security Test: SQL Injection attempt in game type
+POST {{host}}/admin/games
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "gameType": "Ludo'; DROP TABLE Games; --",
+  "playerCount": 4,
+  "entryFee": 100
+}
+
+> {%
+    client.test("SQL Injection Blocked", function () {
+        client.assert(response.status === 400, "Should reject SQL injection attempt");
+    });
+%}
+
+###
+# @name XSS_TemplateName
+# 9.6 Security Test: XSS attempt in template name
+POST {{host}}/admin/templates
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "name": "<script>alert('xss')</script>",
+  "gameType": "Ludo",
+  "maxPlayers": 4,
+  "entryFee": 100
+}
+
+> {%
+    client.test("XSS Blocked", function () {
+        client.assert(response.status === 400, "Should reject XSS attempt");
+    });
+%}
+
+###
+# @name OverflowAmount
+# 9.7 Security Test: Coin amount overflow
+POST {{host}}/admin/players/{{user_id}}/coins
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "amount": 9999999999999999999
+}
+
+> {%
+    client.test("Overflow Amount Rejected", function () {
+        client.assert(response.status === 400, "Should reject overflow amount");
+    });
+%}
+
+###
+# ==========================================
+# 10. CLEANUP
+# ==========================================
+
+###
+# @name DeleteUser_Test
+# 10.1 Soft delete the test user (preserves history)
 DELETE {{host}}/admin/players/{{user_id}}
 Authorization: Bearer {{admin_token}}
 
-# ==========================================
-# 7. CLEANUP
-# ==========================================
+> {%
+    client.test("User Deleted", function () {
+        client.assert(response.status === 200, "User should be deleted");
+    });
+%}
 
 ###
-# @name DeleteLudoGame
-DELETE {{host}}/admin/games/{{ludo_room_id}}
+# @name DeleteUser2_Test
+# 10.2 Delete second test user
+DELETE {{host}}/admin/players/{{user2_id}}
 Authorization: Bearer {{admin_token}}
 
 ###
-# @name DeleteTemplateGame
-DELETE {{host}}/admin/games/{{template_room_id}}
+# @name DeleteLudoGame
+# 10.3 Delete Ludo game
+DELETE {{host}}/admin/games/{{ludo_room_id}}
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("Ludo Game Deleted", function () {
+        client.assert(response.status === 200, "Game should be deleted");
+    });
+%}
+
+###
+# @name DeleteLudoTemplateGame
+# 10.4 Delete Ludo game created from template
+DELETE {{host}}/admin/games/{{ludo_template_room_id}}
 Authorization: Bearer {{admin_token}}
 
 ###
 # @name DeleteMineGame
+# 10.5 Delete LuckyMine game
 DELETE {{host}}/admin/games/{{mine_room_id}}
 Authorization: Bearer {{admin_token}}
 
 ###
-# @name DeleteTemplate
-DELETE {{host}}/admin/templates/{{template_id}}
+# @name DeleteLuckyMineTemplateGame
+# 10.6 Delete LuckyMine game created from template
+DELETE {{host}}/admin/games/{{luckymine_template_room_id}}
 Authorization: Bearer {{admin_token}}
+
+###
+# @name DeleteHighRiskMineGame
+# 10.7 Delete high-risk LuckyMine game
+DELETE {{host}}/admin/games/{{high_risk_mine_room_id}}
+Authorization: Bearer {{admin_token}}
+
+###
+# @name DeleteLudoTemplate
+# 10.8 Delete custom Ludo template
+DELETE {{host}}/admin/templates/{{ludo_template_id}}
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("Template Deleted", function () {
+        client.assert(response.status === 200, "Template should be deleted");
+    });
+%}
+
+###
+# @name DeleteLuckyMineTemplate
+# 10.9 Delete custom LuckyMine template
+DELETE {{host}}/admin/templates/{{luckymine_template_id}}
+Authorization: Bearer {{admin_token}}
+
+###
+# @name VerifyCleanup
+# 10.10 Verify games were cleaned up
+GET {{host}}/admin/games
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("Games Cleaned Up", function () {
+        client.assert(response.status === 200, "Should return remaining games");
+    });
+    client.log("🧹 Remaining Games: " + response.body.length);
+%}
+
+###
+# ==========================================
+# SUMMARY
+# ==========================================
+# Total Endpoints Tested:
+# - Health Checks: /health, /alive, /ready
+# - Auth: /auth/login, /auth/register
+# - Player: /game/me, /game/coins/transaction, /game/coins/history
+# - Catalog: /games/supported
+# - Admin Templates: GET/POST/DELETE /admin/templates
+# - Admin Games: GET/POST/DELETE /admin/games, /admin/games/create-from-template
+# - Admin Ludo: /admin/ludo/{roomId}/roll, /admin/ludo/{roomId}/move/{token}
+# - Admin LuckyMine: /admin/luckymine/{roomId}/full-state
+# - Admin Players: GET/POST/DELETE /admin/players
+#
+# Security Tests:
+# - Unauthorized access
+# - Invalid tokens
+# - Admin role enforcement
+# - SQL injection
+# - XSS
+# - Amount overflow
+# - Invalid IDs

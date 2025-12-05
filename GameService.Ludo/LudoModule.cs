@@ -32,7 +32,7 @@ public sealed class LudoModule : IGameModule
         // 1. Roll Endpoint
         admin.MapPost("/{roomId}/roll", async (string roomId, IServiceProvider sp, IGameBroadcaster bc) =>
         {
-            var command = new GameCommand("ADMIN", "roll", default);
+            var command = new GameCommand(GameCoreConstants.AdminUserId, "roll", default);
             var res = await sp.GetRequiredKeyedService<IGameEngine>("Ludo").ExecuteAsync(roomId, command);
             
             if (res.Success) await bc.BroadcastResultAsync(roomId, res);
@@ -46,7 +46,7 @@ public sealed class LudoModule : IGameModule
             var json = $"{{\"tokenIndex\": {tokenIndex}}}";
             var payload = JsonDocument.Parse(json).RootElement;
             
-            var command = new GameCommand("ADMIN", "move", payload);
+            var command = new GameCommand(GameCoreConstants.AdminUserId, "move", payload);
             var res = await sp.GetRequiredKeyedService<IGameEngine>("Ludo").ExecuteAsync(roomId, command);
 
             if (res.Success) await bc.BroadcastResultAsync(roomId, res);
