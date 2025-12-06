@@ -231,6 +231,50 @@ Authorization: Bearer invalid_token_here_12345
 %}
 
 ###
+# @name LogoutUser
+# 2.9 Revoke the current user's token
+POST {{host}}/auth/logout
+Authorization: Bearer {{user_token}}
+
+> {%
+    client.test("Logout Success", function () {
+        client.assert(response.status === 200, "Logout should succeed");
+    });
+%}
+
+###
+# @name VerifyTokenRevocation
+# 2.10 SECURITY: Ensure revoked token can no longer access protected resources
+GET {{host}}/game/me
+Authorization: Bearer {{user_token}}
+
+> {%
+    client.test("Revoked Token Rejected", function () {
+        client.assert(response.status === 401, "Should return 401 for revoked token");
+    });
+%}
+
+###
+# @name ReLoginUser
+# 2.11 Re-login to continue tests
+POST {{host}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "{{userEmail}}",
+  "password": "{{userPassword}}"
+}
+
+> {%
+    client.test("User Re-Login Success", function () {
+        client.assert(response.status === 200, "User login should succeed");
+        client.assert(response.body.accessToken !== undefined, "Should return access token");
+    });
+    client.global.set("user_token", response.body.accessToken);
+    client.log("👤 User Token (Refreshed): " + response.body.accessToken);
+%}
+
+###
 # ==========================================
 # 3. PLAYER PROFILE & ECONOMY
 # ==========================================
@@ -391,6 +435,31 @@ GET {{host}}/games/supported
         client.assert(response.body.length >= 2, "Should have at least Ludo and LuckyMine");
     });
     client.log("🎮 Supported Games: " + JSON.stringify(response.body));
+%}
+
+###
+# @name GetServerTime
+# 4.2 Get accurate server time for turn timer synchronization
+GET {{host}}/time
+
+> {%
+    client.test("Server Time Retrieved", function () {
+        client.assert(response.status === 200, "Should return time");
+        client.assert(response.body.serverTime !== undefined, "Should have serverTime");
+    });
+%}
+
+###
+# @name GetPublicLobby_Ludo
+# 4.3 Browse public Ludo rooms (Lobby)
+GET {{host}}/games/lobby?gameType=Ludo&page=1&pageSize=10
+Authorization: Bearer {{user_token}}
+
+> {%
+    client.test("Lobby Retrieved", function () {
+        client.assert(response.status === 200, "Lobby should be retrieved");
+        client.assert(Array.isArray(response.body), "Should be array");
+    });
 %}
 
 ###
@@ -838,6 +907,51 @@ Content-Type: {{contentType}}
 > {%
     client.test("Invalid User Rejected", function () {
         client.assert(response.status === 400 || response.status === 404, "Should reject invalid user");
+    });
+%}
+
+###
+# @name AdminDashboardStats
+# 8.8 Get high-level system statistics (Online players, total coins, etc.)
+GET {{host}}/admin/stats
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("Stats Retrieved", function () {
+        client.assert(response.status === 200, "Should return stats");
+        client.assert(response.body.onlinePlayers !== undefined, "Should have onlinePlayers");
+        client.assert(response.body.totalEconomyCoins !== undefined, "Should have totalEconomyCoins");
+    });
+%}
+
+###
+# @name AdminBroadcast
+# 8.9 Send a system-wide broadcast message to all connected clients
+POST {{host}}/admin/broadcast
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "message": "⚠️ Server maintenance in 10 minutes.",
+  "type": "Warning"
+}
+
+> {%
+    client.test("Broadcast Sent", function () {
+        client.assert(response.status === 200, "Broadcast should succeed");
+    });
+%}
+
+###
+# @name AdminGetPlayerHistory
+# 8.10 Admin view of a specific player's wallet history
+GET {{host}}/admin/players/{{user_id}}/history?page=1&pageSize=10
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("Player History Retrieved by Admin", function () {
+        client.assert(response.status === 200, "History should be retrieved");
+        client.assert(response.body.items !== undefined, "Should return items");
     });
 %}
 
