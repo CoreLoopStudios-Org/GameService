@@ -8,49 +8,34 @@ public sealed class LudoClient
     private readonly GameClient _client;
     private LudoState? _lastState;
 
-    /// <summary>Your seat number (0-3), or -1 if not seated</summary>
     public int MySeat { get; private set; } = -1;
 
-    /// <summary>Current game state</summary>
     public LudoState? State => _lastState;
 
-    /// <summary>Whether it's currently your turn</summary>
     public bool IsMyTurn => _lastState?.CurrentPlayer == MySeat;
 
-    /// <summary>The last dice value that was rolled</summary>
     public int LastDiceRoll => _lastState?.LastDiceRoll ?? 0;
 
-    /// <summary>Whether the game has ended</summary>
     public bool IsGameOver => _lastState?.IsGameOver ?? false;
 
-    /// <summary>🎲 A player rolled the dice (seatIndex, value)</summary>
     public event Action<int, int>? OnDiceRolled;
 
-    /// <summary>🏃 A token was moved (seatIndex, tokenIndex, fromPos, toPos)</summary>
     public event Action<int, int, int, int>? OnTokenMoved;
 
-    /// <summary>💥 A token was captured and sent home (capturedPlayerSeat, tokenIndex)</summary>
     public event Action<int, int>? OnTokenCaptured;
 
-    /// <summary>🏠 A token reached home (seatIndex, tokenIndex)</summary>
     public event Action<int, int>? OnTokenFinished;
 
-    /// <summary>🔄 Turn changed to a different player (newPlayerSeat)</summary>
     public event Action<int>? OnTurnChanged;
 
-    /// <summary>⏰ Turn timed out (playerSeat)</summary>
     public event Action<int>? OnTurnTimeout;
 
-    /// <summary>🏆 Game ended with a winner ranking (winnerRanking - seats in order)</summary>
     public event Action<int[]>? OnGameEnded;
 
-    /// <summary>📊 Game state updated</summary>
     public event Action<LudoState>? OnStateUpdated;
 
-    /// <summary>👋 A player joined the room (seatIndex, userName, userId)</summary>
     public event Action<int, string, string>? OnPlayerJoined;
 
-    /// <summary>🚪 A player left the room (userId, userName)</summary>
     public event Action<string, string>? OnPlayerLeft;
 
     public LudoClient(GameClient client)
@@ -64,10 +49,6 @@ public sealed class LudoClient
         _client.OnPlayerLeft += p => OnPlayerLeft?.Invoke(p.UserId, p.UserName);
     }
 
-    /// <summary>
-    /// 🎮 Create a new Ludo game
-    /// </summary>
-    /// <param name="templateName">Template name (default: "StandardLudo")</param>
     public async Task<CreateRoomResult> CreateGameAsync(string templateName = "StandardLudo")
     {
         var result = await _client.CreateRoomAsync(templateName);
@@ -79,9 +60,6 @@ public sealed class LudoClient
         return result;
     }
 
-    /// <summary>
-    /// 🚪 Join an existing Ludo game
-    /// </summary>
     public async Task<JoinRoomResult> JoinGameAsync(string roomId)
     {
         var result = await _client.JoinRoomAsync(roomId);
@@ -92,15 +70,8 @@ public sealed class LudoClient
         return result;
     }
 
-    /// <summary>
-    /// 👋 Leave the current game
-    /// </summary>
     public Task LeaveGameAsync() => _client.LeaveRoomAsync();
 
-    /// <summary>
-    /// 🎲 Roll the dice!
-    /// </summary>
-    /// <returns>The dice result with available moves</returns>
     public async Task<DiceRollResult> RollDiceAsync()
     {
         var result = await _client.PerformActionAsync("Roll");
@@ -122,10 +93,6 @@ public sealed class LudoClient
         return new DiceRollResult(true, state.LastDiceRoll, canMove, legalTokens, null);
     }
 
-    /// <summary>
-    /// 🏃 Move a token
-    /// </summary>
-    /// <param name="tokenIndex">Token to move (0-3)</param>
     public async Task<MoveResult> MoveTokenAsync(int tokenIndex)
     {
         if (tokenIndex < 0 || tokenIndex > 3)
@@ -137,62 +104,41 @@ public sealed class LudoClient
         return new MoveResult(result.Success, result.Error);
     }
 
-    /// <summary>
-    /// ⏭️ Skip your turn (when you have no legal moves)
-    /// </summary>
     public async Task<ActionResult> SkipTurnAsync()
     {
         return await _client.PerformActionAsync("Skip");
     }
 
-    /// <summary>
-    /// 🎯 Get all your token positions
-    /// </summary>
     public int[] GetMyTokenPositions()
     {
         if (_lastState == null || MySeat < 0) return Array.Empty<int>();
         return GetPlayerTokens(_lastState, MySeat);
     }
 
-    /// <summary>
-    /// 📍 Get a specific player's token positions
-    /// </summary>
     public int[] GetPlayerTokens(int seatIndex)
     {
         if (_lastState == null) return Array.Empty<int>();
         return GetPlayerTokens(_lastState, seatIndex);
     }
 
-    /// <summary>
-    /// 🎲 Get tokens that can legally move with the current dice roll
-    /// </summary>
     public int[] GetMovableTokens()
     {
         if (_lastState == null) return Array.Empty<int>();
         return GetLegalTokenMoves(_lastState);
     }
 
-    /// <summary>
-    /// 🏆 Get the winner ranking (finished players in order)
-    /// </summary>
     public int[] GetWinnerRanking()
     {
         if (_lastState == null) return Array.Empty<int>();
         return UnpackWinners(_lastState.WinnersPacked);
     }
 
-    /// <summary>
-    /// ✅ Check if a player has finished (all tokens home)
-    /// </summary>
     public bool HasPlayerFinished(int seatIndex)
     {
         if (_lastState == null || seatIndex < 0 || seatIndex > 3) return false;
         return (_lastState.FinishedMask & (1 << seatIndex)) != 0;
     }
 
-    /// <summary>
-    /// 👥 Check if a seat is occupied by a player
-    /// </summary>
     public bool IsSeatActive(int seatIndex)
     {
         if (_lastState == null || seatIndex < 0 || seatIndex > 3) return false;
@@ -335,7 +281,6 @@ public sealed class LudoClient
     }
 }
 
-/// <summary>Ludo game state</summary>
 public sealed class LudoState
 {
     public int CurrentPlayer { get; set; }
@@ -352,7 +297,6 @@ public sealed class LudoState
     public byte[]? Tokens { get; set; }
 }
 
-/// <summary>Result of rolling the dice</summary>
 public sealed record DiceRollResult(
     bool Success,
     int Value,
@@ -360,5 +304,4 @@ public sealed record DiceRollResult(
     int[] MovableTokens,
     string? Error);
 
-/// <summary>Result of moving a token</summary>
 public sealed record MoveResult(bool Success, string? Error);

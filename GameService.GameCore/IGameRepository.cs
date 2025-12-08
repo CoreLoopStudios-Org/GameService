@@ -2,18 +2,10 @@ using System.Runtime.CompilerServices;
 
 namespace GameService.GameCore;
 
-/// <summary>
-///     Generic repository for game state persistence.
-///     All games use the same repository implementation with different TState types.
-/// </summary>
 public interface IGameRepository<TState> where TState : struct
 {
     Task<GameContext<TState>?> LoadAsync(string roomId);
     
-    /// <summary>
-    ///     Load multiple game states in a single Redis roundtrip using MGET.
-    ///     Much more efficient than multiple LoadAsync calls for admin dashboards.
-    /// </summary>
     Task<IReadOnlyList<GameContext<TState>>> LoadManyAsync(IReadOnlyList<string> roomIds);
     
     Task SaveAsync(string roomId, TState state, GameRoomMeta meta);
@@ -22,30 +14,18 @@ public interface IGameRepository<TState> where TState : struct
     Task ReleaseLockAsync(string roomId);
 }
 
-/// <summary>
-///     Game context containing state and metadata
-/// </summary>
 public sealed record GameContext<TState>(string RoomId, TState State, GameRoomMeta Meta)
     where TState : struct;
 
-/// <summary>
-///     Factory for creating typed game repositories
-/// </summary>
 public interface IGameRepositoryFactory
 {
     IGameRepository<TState> Create<TState>(string gameType) where TState : struct;
 }
 
-/// <summary>
-///     Marker interface for game states - enforces struct constraint at compile time
-/// </summary>
 public interface IGameState
 {
 }
 
-/// <summary>
-///     Validates game state structs at startup
-/// </summary>
 public static class GameStateValidator
 {
     private const int MaxStateSizeBytes = 1024;

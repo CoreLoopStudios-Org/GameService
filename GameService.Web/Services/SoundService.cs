@@ -2,17 +2,10 @@ using Microsoft.JSInterop;
 
 namespace GameService.Web.Services;
 
-/// <summary>
-///     Service for playing sound effects using JS interop.
-///     Enhances game feel with audio feedback.
-/// </summary>
 public class SoundService(IJSRuntime jsRuntime, ILogger<SoundService> logger)
 {
     private bool _isInitialized;
 
-    /// <summary>
-    ///     Initialize the audio context (required for browser autoplay policies)
-    /// </summary>
     public async Task InitializeAsync()
     {
         if (_isInitialized) return;

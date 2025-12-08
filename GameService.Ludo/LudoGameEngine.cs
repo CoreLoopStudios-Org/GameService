@@ -4,9 +4,6 @@ using Microsoft.Extensions.Options;
 
 namespace GameService.Ludo;
 
-/// <summary>
-///     Ludo game action constants - prevents typos in action names
-/// </summary>
 public static class LudoActions
 {
     public const string Roll = "roll";
@@ -21,9 +18,6 @@ public static class LudoActions
     ];
 }
 
-/// <summary>
-///     Ludo game event constants - prevents typos in event names
-/// </summary>
 public static class LudoEvents
 {
     public const string DiceRolled = "DiceRolled";

@@ -4,10 +4,6 @@ using System.Text.RegularExpressions;
 
 namespace GameService.ServiceDefaults.Security;
 
-/// <summary>
-///     Input validation utilities for request data.
-///     Prevents injection attacks and ensures data integrity.
-/// </summary>
 public static partial class InputValidator
 {
     private const int MaxEmailLength = 254;
@@ -19,9 +15,6 @@ public static partial class InputValidator
     private const int MaxTemplateNameLength = 100;
     private const int MaxConfigJsonLength = 4096;
 
-    /// <summary>
-    ///     Validates an email address format
-    /// </summary>
     public static bool IsValidEmail(string? email)
     {
         if (string.IsNullOrWhiteSpace(email)) return false;
@@ -30,18 +23,12 @@ public static partial class InputValidator
         return new EmailAddressAttribute().IsValid(email);
     }
 
-    /// <summary>
-    ///     Validates a user ID (GUID format)
-    /// </summary>
     public static bool IsValidUserId(string? userId)
     {
         if (string.IsNullOrWhiteSpace(userId)) return false;
         return Guid.TryParse(userId, out _);
     }
 
-    /// <summary>
-    ///     Validates a room ID (hex string, 6+ chars)
-    /// </summary>
     public static bool IsValidRoomId(string? roomId)
     {
         if (string.IsNullOrWhiteSpace(roomId)) return false;
@@ -50,9 +37,6 @@ public static partial class InputValidator
         return HexPattern().IsMatch(roomId);
     }
 
-    /// <summary>
-    ///     Validates a game type string (alphanumeric only)
-    /// </summary>
     public static bool IsValidGameType(string? gameType)
     {
         if (string.IsNullOrWhiteSpace(gameType)) return false;
@@ -61,9 +45,6 @@ public static partial class InputValidator
         return AlphanumericPattern().IsMatch(gameType);
     }
 
-    /// <summary>
-    ///     Validates template name (alphanumeric with spaces and common punctuation)
-    /// </summary>
     public static bool IsValidTemplateName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name)) return false;
@@ -72,9 +53,6 @@ public static partial class InputValidator
         return SafeNamePattern().IsMatch(name);
     }
 
-    /// <summary>
-    ///     Validates reference ID (alphanumeric with underscores, colons, hyphens)
-    /// </summary>
     public static bool IsValidReferenceId(string? referenceId)
     {
         if (string.IsNullOrEmpty(referenceId)) return true;
@@ -83,9 +61,6 @@ public static partial class InputValidator
         return ReferenceIdPattern().IsMatch(referenceId);
     }
 
-    /// <summary>
-    ///     Validates idempotency key (alphanumeric with underscores, hyphens)
-    /// </summary>
     public static bool IsValidIdempotencyKey(string? key)
     {
         if (string.IsNullOrEmpty(key)) return true;
@@ -94,18 +69,12 @@ public static partial class InputValidator
         return IdempotencyKeyPattern().IsMatch(key);
     }
 
-    /// <summary>
-    ///     Validates coin amount is within safe bounds
-    /// </summary>
     public static bool IsValidCoinAmount(long amount)
     {
         const long maxAmount = 1_000_000_000_000;
         return amount is >= -maxAmount and <= maxAmount;
     }
 
-    /// <summary>
-    ///     Validates JSON config doesn't exceed size limit and is well-formed
-    /// </summary>
     public static bool IsValidConfigJson(string? json)
     {
         if (string.IsNullOrEmpty(json)) return true;
@@ -122,9 +91,6 @@ public static partial class InputValidator
         }
     }
 
-    /// <summary>
-    ///     Sanitizes a string for safe logging (removes potential injection)
-    /// </summary>
     public static string SanitizeForLogging(string? input, int maxLength = 100)
     {
         if (string.IsNullOrEmpty(input)) return "[empty]";
@@ -155,9 +121,6 @@ public static partial class InputValidator
     private static partial Regex LogSafePattern();
 }
 
-/// <summary>
-///     Validation result for endpoints
-/// </summary>
 public readonly record struct ValidationResult(bool IsValid, string? ErrorMessage = null)
 {
     public static ValidationResult Success => new(true);

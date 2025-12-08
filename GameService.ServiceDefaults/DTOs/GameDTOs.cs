@@ -4,9 +4,6 @@ public record struct UpdateCoinRequest(long Amount, string? IdempotencyKey = nul
 
 public record struct PlayerProfileResponse(string UserId, long Coins, string? ActiveRoomId = null, string? ActiveGameType = null);
 
-/// <summary>
-///     Generic pagination wrapper for API responses
-/// </summary>
 public record PagedResult<T>(IEnumerable<T> Items, int TotalCount, int Page, int PageSize);
 
 public record AdminPlayerDto(int ProfileId, string UserId, string Username, string Email, long Coins, bool IsOnline = false);
@@ -40,9 +37,6 @@ public class CreateTemplateRequest
 
 public record CreateRoomFromTemplateRequest(int TemplateId);
 
-/// <summary>
-///     Wallet transaction history entry for user-facing API
-/// </summary>
 public record WalletTransactionDto(
     long Id,
     long Amount,
@@ -52,29 +46,14 @@ public record WalletTransactionDto(
     string ReferenceId,
     DateTimeOffset CreatedAt);
 
-/// <summary>
-///     Request to update player profile (display name, avatar)
-/// </summary>
 public record UpdateProfileRequest(string? DisplayName, int? AvatarId);
 
-/// <summary>
-///     Request for quick matchmaking
-/// </summary>
 public record QuickMatchRequest(string GameType, int MaxPlayers = 4, long EntryFee = 0);
 
-/// <summary>
-///     Response for quick match endpoint
-/// </summary>
 public record QuickMatchResponse(string RoomId, string Action);
 
-/// <summary>
-///     Leaderboard entry DTO
-/// </summary>
 public record LeaderboardEntryDto(string Username, long Coins);
 
-/// <summary>
-///     High-level system statistics for the admin dashboard
-/// </summary>
 public record DashboardStatsDto(
     int OnlinePlayers,
     int ActiveGames,
@@ -82,7 +61,4 @@ public record DashboardStatsDto(
     long TotalEconomyCoins
 );
 
-/// <summary>
-///     Request to send a system-wide broadcast
-/// </summary>
 public record BroadcastRequest(string Message, string Type = "Info");

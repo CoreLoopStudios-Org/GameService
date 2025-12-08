@@ -1,9 +1,5 @@
 namespace GameService.Tests;
 
-/// <summary>
-/// 🧪 SDK Smoke Tests - Verify the SDKs compile and basic types work
-/// These tests don't need a running server - they just verify the SDK is usable
-/// </summary>
 [TestFixture]
 public class SdkSmokeTests
 {

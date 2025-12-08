@@ -10,9 +10,6 @@ using Microsoft.Extensions.Options;
 
 namespace GameService.ServiceDefaults.Security;
 
-/// <summary>
-///     Middleware for API key authentication with production-grade security.
-/// </summary>
 public sealed class ApiKeyAuthenticationMiddleware
 {
     private readonly AdminSettings _adminSettings;
@@ -91,9 +88,6 @@ public sealed class ApiKeyAuthenticationMiddleware
         await _next(context);
     }
 
-    /// <summary>
-    ///     Constant-time comparison to prevent timing attacks
-    /// </summary>
     private static bool SecureCompare(byte[] _providedKeyBytes, byte[] configuredKeyBytes)
     {
         if (_providedKeyBytes.Length != configuredKeyBytes.Length)
@@ -106,15 +100,8 @@ public sealed class ApiKeyAuthenticationMiddleware
     }
 }
 
-/// <summary>
-///     Extension methods for API key middleware
-/// </summary>
 public static class ApiKeyAuthenticationExtensions
 {
-    /// <summary>
-    ///     Adds API key authentication middleware.
-    ///     Must be called after UseAuthentication() and before UseAuthorization()
-    /// </summary>
     public static IApplicationBuilder UseApiKeyAuthentication(this IApplicationBuilder app)
     {
         return app.UseMiddleware<ApiKeyAuthenticationMiddleware>();

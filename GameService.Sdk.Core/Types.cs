@@ -1,9 +1,7 @@
 namespace GameService.Sdk.Core;
 
-/// <summary>Connection state</summary>
 public enum ConnectionState { Disconnected, Connecting, Connected, Reconnecting }
 
-/// <summary>Current game state snapshot</summary>
 public sealed record GameState(
     string RoomId,
     string GameType,
@@ -14,37 +12,26 @@ public sealed record GameState(
     IReadOnlyDictionary<string, int> PlayerSeats,
     object? GameData);
 
-/// <summary>Result of creating a room</summary>
 public sealed record CreateRoomResult(bool Success, string? RoomId, string? Error);
 
-/// <summary>Result of joining a room</summary>
 public sealed record JoinRoomResult(bool Success, int SeatIndex, string? Error);
 
-/// <summary>Result of spectating</summary>
 public sealed record SpectateResult(bool Success, string? Error);
 
-/// <summary>Result of a game action</summary>
 public sealed record ActionResult(bool Success, string? Error, object? NewState);
 
-/// <summary>A player joined the room</summary>
 public sealed record PlayerJoined(string UserId, string UserName, int SeatIndex);
 
-/// <summary>A player left the room</summary>
 public sealed record PlayerLeft(string UserId, string UserName);
 
-/// <summary>A player disconnected (grace period active)</summary>
 public sealed record PlayerDisconnected(string UserId, string UserName, int GracePeriodSeconds);
 
-/// <summary>A player reconnected</summary>
 public sealed record PlayerReconnected(string UserId, string UserName);
 
-/// <summary>Chat message</summary>
 public sealed record ChatMessage(string UserId, string UserName, string Message, DateTimeOffset Timestamp);
 
-/// <summary>Generic game event</summary>
 public sealed record GameEvent(string EventName, object Data, DateTimeOffset Timestamp);
 
-/// <summary>Action error</summary>
 public sealed record ActionError(string Action, string Message);
 
 internal sealed record CreateRoomResponse(bool Success, string? RoomId, string? ErrorMessage);

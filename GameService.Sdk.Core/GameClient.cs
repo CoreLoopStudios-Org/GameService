@@ -4,22 +4,12 @@ using Microsoft.AspNetCore.SignalR.Client;
 
 namespace GameService.Sdk.Core;
 
-/// <summary>
-/// 🎮 The main GameService client - your gateway to multiplayer gaming!
-/// 
-/// Quick start:
-/// <code>
-/// var client = await GameClient.ConnectAsync("https://api.example.com", "your-jwt-token");
-/// client.OnGameState += state => Console.WriteLine($"Game updated!");
-/// </code>
-/// </summary>
 public sealed class GameClient : IAsyncDisposable
 {
     private readonly HubConnection _hub;
     private readonly string _baseUrl;
     private bool _disposed;
 
-    /// <summary>Current connection state</summary>
     public ConnectionState State => _hub.State switch
     {
         HubConnectionState.Connected => ConnectionState.Connected,
@@ -28,37 +18,27 @@ public sealed class GameClient : IAsyncDisposable
         _ => ConnectionState.Disconnected
     };
 
-    /// <summary>The room you're currently in (null if not in a room)</summary>
     public string? CurrentRoomId { get; private set; }
 
     public int LatencyMs { get; private set; }
     public event Action<int>? OnLatencyUpdate;
 
-    /// <summary>🎲 Fired when game state changes - this is your main update loop!</summary>
     public event Action<GameState>? OnGameState;
 
-    /// <summary>👋 A player joined the room</summary>
     public event Action<PlayerJoined>? OnPlayerJoined;
 
-    /// <summary>🚪 A player left the room</summary>
     public event Action<PlayerLeft>? OnPlayerLeft;
 
-    /// <summary>⚡ A player disconnected (they have a grace period to reconnect)</summary>
     public event Action<PlayerDisconnected>? OnPlayerDisconnected;
 
-    /// <summary>🔌 A player reconnected within the grace period</summary>
     public event Action<PlayerReconnected>? OnPlayerReconnected;
 
-    /// <summary>💬 Chat message received</summary>
     public event Action<ChatMessage>? OnChatMessage;
 
-    /// <summary>🎯 Generic game event (dice rolls, moves, etc.)</summary>
     public event Action<GameEvent>? OnGameEvent;
 
-    /// <summary>❌ An action you tried failed</summary>
     public event Action<ActionError>? OnActionError;
 
-    /// <summary>🔄 Connection state changed</summary>
     public event Action<ConnectionState>? OnConnectionStateChanged;
 
     private GameClient(HubConnection hub, string baseUrl)
@@ -69,13 +49,6 @@ public sealed class GameClient : IAsyncDisposable
         _hub.KeepAliveInterval = TimeSpan.FromSeconds(15);
     }
 
-    /// <summary>
-    /// 🔌 Connect to the game server!
-    /// </summary>
-    /// <param name="baseUrl">Server URL (e.g., "https://api.example.com")</param>
-    /// <param name="accessTokenProvider">Provider for JWT access token</param>
-    /// <param name="cancellationToken">Optional cancellation token</param>
-    /// <returns>A connected GameClient ready for action!</returns>
     public static async Task<GameClient> ConnectAsync(
         string baseUrl,
         Func<Task<string?>> accessTokenProvider,
@@ -96,9 +69,6 @@ public sealed class GameClient : IAsyncDisposable
         return client;
     }
 
-    /// <summary>
-    /// 🔌 Connect to the game server! (Legacy overload)
-    /// </summary>
     public static Task<GameClient> ConnectAsync(
         string baseUrl,
         string accessToken,
@@ -107,9 +77,6 @@ public sealed class GameClient : IAsyncDisposable
         return ConnectAsync(baseUrl, () => Task.FromResult<string?>(accessToken), cancellationToken);
     }
 
-    /// <summary>
-    /// 🔌 Create a client builder for advanced configuration
-    /// </summary>
     public static GameClientBuilder Create(string baseUrl) => new(baseUrl);
 
     public async Task<int> PingAsync()
@@ -133,11 +100,6 @@ public sealed class GameClient : IAsyncDisposable
         return LatencyMs;
     }
 
-    /// <summary>
-    /// 🏗️ Create a new game room from a template
-    /// </summary>
-    /// <param name="templateName">Template name (e.g., "StandardLudo", "99Mines")</param>
-    /// <returns>Result with RoomId on success</returns>
     public async Task<CreateRoomResult> CreateRoomAsync(string templateName)
     {
         EnsureConnected();
@@ -151,11 +113,6 @@ public sealed class GameClient : IAsyncDisposable
         return new CreateRoomResult(response.Success, response.RoomId, response.ErrorMessage);
     }
 
-    /// <summary>
-    /// 🚪 Join an existing game room
-    /// </summary>
-    /// <param name="roomId">The room's short ID</param>
-    /// <returns>Result with your seat index on success</returns>
     public async Task<JoinRoomResult> JoinRoomAsync(string roomId)
     {
         EnsureConnected();
@@ -169,9 +126,6 @@ public sealed class GameClient : IAsyncDisposable
         return new JoinRoomResult(response.Success, response.SeatIndex, response.ErrorMessage);
     }
 
-    /// <summary>
-    /// 👋 Leave the current room
-    /// </summary>
     public async Task LeaveRoomAsync()
     {
         if (CurrentRoomId == null) return;
@@ -181,9 +135,6 @@ public sealed class GameClient : IAsyncDisposable
         CurrentRoomId = null;
     }
 
-    /// <summary>
-    /// 👀 Spectate a room without playing
-    /// </summary>
     public async Task<SpectateResult> SpectateAsync(string roomId)
     {
         EnsureConnected();
@@ -191,22 +142,12 @@ public sealed class GameClient : IAsyncDisposable
         return new SpectateResult(response.Success, response.ErrorMessage);
     }
 
-    /// <summary>
-    /// 🚶 Stop spectating
-    /// </summary>
     public async Task StopSpectatingAsync(string roomId)
     {
         EnsureConnected();
         await _hub.InvokeAsync("StopSpectating", roomId);
     }
 
-    /// <summary>
-    /// ⚡ Perform a game action (roll dice, move piece, reveal tile, etc.)
-    /// </summary>
-    /// <param name="actionName">Action name (e.g., "Roll", "Move", "Reveal")</param>
-    /// <param name="payload">Action-specific data</param>
-    /// <param name="commandId">Optional unique ID for idempotency</param>
-    /// <returns>Result of the action</returns>
     public async Task<ActionResult> PerformActionAsync(
         string actionName,
         object? payload = null,
@@ -230,9 +171,6 @@ public sealed class GameClient : IAsyncDisposable
         return new ActionResult(response.Success, response.ErrorMessage, response.NewState);
     }
 
-    /// <summary>
-    /// 📋 Get legal actions you can take right now
-    /// </summary>
     public async Task<IReadOnlyList<string>> GetLegalActionsAsync()
     {
         if (CurrentRoomId == null) return Array.Empty<string>();
@@ -241,9 +179,6 @@ public sealed class GameClient : IAsyncDisposable
         return await _hub.InvokeAsync<IReadOnlyList<string>>("GetLegalActions", CurrentRoomId);
     }
 
-    /// <summary>
-    /// 🔄 Manually refresh the game state
-    /// </summary>
     public async Task<GameState?> GetStateAsync()
     {
         if (CurrentRoomId == null) return null;
@@ -253,9 +188,6 @@ public sealed class GameClient : IAsyncDisposable
         return response == null ? null : MapGameState(response);
     }
 
-    /// <summary>
-    /// 💬 Send a chat message to the room
-    /// </summary>
     public async Task SendChatAsync(string message)
     {
         if (CurrentRoomId == null) return;
@@ -375,7 +307,6 @@ public sealed class GameClient : IAsyncDisposable
     }
 }
 
-/// <summary>Builder for advanced GameClient configuration</summary>
 public sealed class GameClientBuilder
 {
     private readonly string _baseUrl;
@@ -384,28 +315,24 @@ public sealed class GameClientBuilder
 
     internal GameClientBuilder(string baseUrl) => _baseUrl = baseUrl;
 
-    /// <summary>Set the access token provider</summary>
     public GameClientBuilder WithAccessTokenProvider(Func<Task<string?>> provider)
     {
         _tokenProvider = provider;
         return this;
     }
 
-    /// <summary>Set the access token</summary>
     public GameClientBuilder WithAccessToken(string token)
     {
         _tokenProvider = () => Task.FromResult<string?>(token);
         return this;
     }
 
-    /// <summary>Configure the underlying HubConnection</summary>
     public GameClientBuilder Configure(Action<HubConnectionBuilder> configure)
     {
         _configure = configure;
         return this;
     }
 
-    /// <summary>Build and connect!</summary>
     public Task<GameClient> ConnectAsync(CancellationToken cancellationToken = default)
     {
         if (_tokenProvider == null)

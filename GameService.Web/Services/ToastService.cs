@@ -1,8 +1,5 @@
 namespace GameService.Web.Services;
 
-/// <summary>
-///     Toast notification service for displaying non-intrusive messages
-/// </summary>
 public class ToastService
 {
     public event Action<string, string, ToastLevel>? OnShow;

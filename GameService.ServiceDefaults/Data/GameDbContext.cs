@@ -190,7 +190,6 @@ public class PlayerProfile
 
     [ConcurrencyCheck] public Guid Version { get; set; } = Guid.NewGuid();
 
-    /// <summary>Soft delete flag - preserves referential integrity with history tables</summary>
     public bool IsDeleted { get; set; }
 
     public DateTimeOffset? DeletedAt { get; set; }
@@ -206,43 +205,31 @@ public class GameRoomTemplate
     public string? ConfigJson { get; set; }
 }
 
-/// <summary>
-///     Immutable transaction ledger for auditability - every coin movement is logged here.
-/// </summary>
 public class WalletTransaction
 {
     public long Id { get; set; }
 
     [MaxLength(450)] public required string UserId { get; set; }
 
-    /// <summary>Amount of coins (positive for credit, negative for debit)</summary>
     public long Amount { get; set; }
 
-    /// <summary>Balance after this transaction</summary>
     public long BalanceAfter { get; set; }
 
-    /// <summary>Transaction type: Deposit, Withdrawal, EntryFee, Win, Refund, AdminAdjust</summary>
     [MaxLength(50)]
     public string TransactionType { get; set; } = "Unknown";
 
-    /// <summary>Human-readable description</summary>
     [MaxLength(255)]
     public string Description { get; set; } = "";
 
-    /// <summary>Reference to related entity (RoomId, OrderId, etc.)</summary>
     [MaxLength(100)]
     public string ReferenceId { get; set; } = "";
 
-    /// <summary>Idempotency key to prevent duplicate transactions</summary>
     [MaxLength(64)]
     public string? IdempotencyKey { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
-/// <summary>
-///     Archived game record for history and replay capability.
-/// </summary>
 public class ArchivedGame
 {
     public long Id { get; set; }
@@ -251,16 +238,12 @@ public class ArchivedGame
 
     [MaxLength(50)] public required string GameType { get; set; }
 
-    /// <summary>Serialized final game state</summary>
     public string FinalStateJson { get; set; } = "{}";
 
-    /// <summary>Serialized list of game events for replay</summary>
     public string EventsJson { get; set; } = "[]";
 
-    /// <summary>Player seats at end of game (UserId -> Seat)</summary>
     public string PlayerSeatsJson { get; set; } = "{}";
 
-    /// <summary>Winner's UserId (null if draw/cancelled)</summary>
     [MaxLength(450)]
     public string? WinnerUserId { get; set; }
 
@@ -270,58 +253,38 @@ public class ArchivedGame
     public DateTimeOffset EndedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
-/// <summary>
-///     Transactional outbox message for reliable event publishing.
-///     Messages are written to the database in the same transaction as the business operation,
-///     then processed asynchronously by a background worker.
-/// </summary>
 public class OutboxMessage
 {
     public long Id { get; set; }
 
-    /// <summary>Type of event (e.g., "PlayerUpdated", "GameEnded")</summary>
     [MaxLength(100)]
     public required string EventType { get; set; }
 
-    /// <summary>JSON payload of the event</summary>
     public required string Payload { get; set; }
 
-    /// <summary>When the message was created</summary>
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
-    /// <summary>When the message was successfully published (null if not yet processed)</summary>
     public DateTimeOffset? ProcessedAt { get; set; }
 
-    /// <summary>Number of processing attempts</summary>
     public int Attempts { get; set; }
 
-    /// <summary>Last error message if processing failed</summary>
     [MaxLength(500)]
     public string? LastError { get; set; }
 }
 
-/// <summary>
-///     Periodic snapshot of active game states from Redis to PostgreSQL.
-///     Provides disaster recovery if Redis data is lost.
-/// </summary>
 public class GameStateSnapshot
 {
     public long Id { get; set; }
 
-    /// <summary>Room ID in Redis</summary>
     [MaxLength(50)]
     public required string RoomId { get; set; }
 
-    /// <summary>Game type (Ludo, LuckyMine, etc.)</summary>
     [MaxLength(50)]
     public required string GameType { get; set; }
 
-    /// <summary>Binary state data (same format as Redis)</summary>
     public required byte[] StateData { get; set; }
 
-    /// <summary>Serialized GameRoomMeta JSON</summary>
     public required string MetaJson { get; set; }
 
-    /// <summary>When this snapshot was taken</summary>
     public DateTimeOffset SnapshotAt { get; set; } = DateTimeOffset.UtcNow;
 }

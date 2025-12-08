@@ -2,61 +2,26 @@ using System.Text.Json;
 
 namespace GameService.GameCore;
 
-/// <summary>
-///     Core game engine interface - handles all game actions via command pattern.
-///     Each game type registers ONE engine with a keyed service.
-/// </summary>
 public interface IGameEngine
 {
-    /// <summary>
-    ///     Unique identifier for this game type (e.g., "Ludo", "Chess", "Poker")
-    /// </summary>
     string GameType { get; }
 
-    /// <summary>
-    ///     Execute any game action (Roll, Move, Bet, Draw, etc.)
-    /// </summary>
     Task<GameActionResult> ExecuteAsync(string roomId, GameCommand command);
 
-    /// <summary>
-    ///     Get legal actions for the current player in a room
-    /// </summary>
     Task<IReadOnlyList<string>> GetLegalActionsAsync(string roomId, string userId);
 
-    /// <summary>
-    ///     Get the current game state for a room
-    /// </summary>
     Task<GameStateResponse?> GetStateAsync(string roomId);
     
-    /// <summary>
-    ///     Get multiple game states in a single Redis roundtrip.
-    ///     More efficient than multiple GetStateAsync calls for admin dashboards.
-    /// </summary>
     Task<IReadOnlyList<GameStateResponse>> GetManyStatesAsync(IReadOnlyList<string> roomIds);
 }
 
-/// <summary>
-///     Extended interface for turn-based games with timeout handling.
-///     Games implementing this will have automatic AFK/timeout handling.
-/// </summary>
 public interface ITurnBasedGameEngine : IGameEngine
 {
-    /// <summary>
-    ///     Turn timeout in seconds. After this time, ForceEndTurn or AutoPlay is triggered.
-    /// </summary>
     int TurnTimeoutSeconds { get; }
 
-    /// <summary>
-    ///     Checks a room for player timeouts and forces moves/forfeits if necessary.
-    ///     Called by a background worker every few seconds.
-    /// </summary>
-    /// <returns>Result if an action was taken, null if no timeout occurred</returns>
     Task<GameActionResult?> CheckTimeoutsAsync(string roomId);
 }
 
-/// <summary>
-///     Command sent from client to execute a game action
-/// </summary>
 public sealed record GameCommand(
     string UserId,
     string Action,
@@ -77,9 +42,6 @@ public sealed record GameCommand(
     }
 }
 
-/// <summary>
-///     Result of executing a game action
-/// </summary>
 public sealed record GameActionResult
 {
     public bool Success { get; init; }
@@ -88,10 +50,6 @@ public sealed record GameActionResult
     public object? NewState { get; init; }
     public IReadOnlyList<GameEvent> Events { get; init; } = [];
 
-    /// <summary>
-    ///     If set, indicates the game has ended and should be archived.
-    ///     The GameHub will call the archival service when this is populated.
-    /// </summary>
     public GameEndedInfo? GameEnded { get; init; }
 
     public static GameActionResult Error(string message)
@@ -125,9 +83,6 @@ public sealed record GameActionResult
     }
 }
 
-/// <summary>
-///     Information needed to archive a completed game
-/// </summary>
 public sealed record GameEndedInfo(
     string RoomId,
     string GameType,
@@ -137,17 +92,11 @@ public sealed record GameEndedInfo(
     DateTimeOffset StartedAt,
     IReadOnlyList<string>? WinnerRanking = null);
 
-/// <summary>
-///     Event emitted by game engine for broadcasting to clients and audit logging
-/// </summary>
 public sealed record GameEvent(string EventName, object Data)
 {
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 }
 
-/// <summary>
-///     Standardized game state response for API/SignalR
-/// </summary>
 public sealed record GameStateResponse
 {
     public required string RoomId { get; init; }
@@ -157,9 +106,6 @@ public sealed record GameStateResponse
     public IReadOnlyList<string> LegalMoves { get; init; } = [];
 }
 
-/// <summary>
-///     Common room metadata shared across all game types
-/// </summary>
 public sealed record GameRoomMeta
 {
     public Dictionary<string, int> PlayerSeats { get; init; } = new();
@@ -172,9 +118,7 @@ public sealed record GameRoomMeta
 
     public int CurrentPlayerCount => PlayerSeats.Count;
 
-    /// <summary>Timestamp when the current turn started (for timeout tracking)</summary>
     public DateTimeOffset TurnStartedAt { get; init; } = DateTimeOffset.UtcNow;
 
-    /// <summary>Tracks players who have disconnected but may reconnect</summary>
     public Dictionary<string, DateTimeOffset> DisconnectedPlayers { get; init; } = new();
 }

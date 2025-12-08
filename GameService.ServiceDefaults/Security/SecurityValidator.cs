@@ -8,10 +8,6 @@ using Microsoft.Extensions.Options;
 
 namespace GameService.ServiceDefaults.Security;
 
-/// <summary>
-///     Validates security configuration on startup.
-///     Blocks startup in production if critical security settings are misconfigured.
-/// </summary>
 public sealed class SecurityValidator
 {
     private readonly AdminSettings _adminSettings;
@@ -31,9 +27,6 @@ public sealed class SecurityValidator
         _adminSettings = adminSettings.Value;
     }
 
-    /// <summary>
-    ///     Validates all security settings. Throws in production if critical issues found.
-    /// </summary>
     public void Validate()
     {
         var issues = new List<string>();
@@ -152,9 +145,6 @@ public sealed class SecurityValidator
         return hasLower && hasUpper && hasDigit && hasSpecial;
     }
 
-    /// <summary>
-    ///     Generates a cryptographically secure API key
-    /// </summary>
     public static string GenerateSecureApiKey(int length = 64)
     {
         const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
@@ -167,23 +157,14 @@ public sealed class SecurityValidator
     }
 }
 
-/// <summary>
-///     Extension methods for security validation
-/// </summary>
 public static class SecurityValidatorExtensions
 {
-    /// <summary>
-    ///     Adds security validation services
-    /// </summary>
     public static IServiceCollection AddSecurityValidation(this IServiceCollection services)
     {
         services.AddSingleton<SecurityValidator>();
         return services;
     }
 
-    /// <summary>
-    ///     Validates security settings on startup. Call after building the app.
-    /// </summary>
     public static WebApplication ValidateSecurity(this WebApplication app)
     {
         var validator = app.Services.GetRequiredService<SecurityValidator>();

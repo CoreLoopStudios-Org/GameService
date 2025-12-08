@@ -1,16 +1,9 @@
 namespace GameService.GameCore;
 
-/// <summary>
-///     Room service interface for room lifecycle management.
-///     Each game type registers ONE room service with a keyed service.
-/// </summary>
 public interface IGameRoomService
 {
     string GameType { get; }
 
-    /// <summary>
-    ///     Create a new game room
-    /// </summary>
     Task<string> CreateRoomAsync(GameRoomMeta config);
 
     Task DeleteRoomAsync(string roomId);
@@ -19,9 +12,6 @@ public interface IGameRoomService
     Task<GameRoomMeta?> GetRoomMetaAsync(string roomId);
 }
 
-/// <summary>
-///     Result of attempting to join a room
-/// </summary>
 public sealed record JoinRoomResult(bool Success, string? ErrorMessage = null, int SeatIndex = -1)
 {
     public static JoinRoomResult Ok(int seatIndex)
@@ -35,9 +25,6 @@ public sealed record JoinRoomResult(bool Success, string? ErrorMessage = null, i
     }
 }
 
-/// <summary>
-///     DTO for listing active games
-/// </summary>
 public sealed record GameRoomDto(
     string RoomId,
     string GameType,

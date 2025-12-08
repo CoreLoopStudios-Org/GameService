@@ -6,11 +6,6 @@ using System.Security.Claims;
 
 namespace GameService.ServiceDefaults.Security;
 
-/// <summary>
-///     Middleware for token revocation (blacklisting).
-///     When a user is banned, their JWT is added to Redis with TTL matching token expiry.
-///     All requests are checked against this blacklist.
-/// </summary>
 public sealed class TokenRevocationMiddleware
 {
     private const string TokenBlacklistPrefix = "revoked:jti:";
@@ -53,25 +48,12 @@ public sealed class TokenRevocationMiddleware
     }
 }
 
-/// <summary>
-///     Service for managing token revocation
-/// </summary>
 public interface ITokenRevocationService
 {
-    /// <summary>
-    ///     Revoke a specific token by its JTI claim
-    /// </summary>
     Task RevokeTokenAsync(string jti, TimeSpan? ttl = null);
 
-    /// <summary>
-    ///     Revoke all tokens for a user by storing their user ID
-    ///     Tokens issued before this time will be rejected
-    /// </summary>
     Task RevokeAllUserTokensAsync(string userId);
 
-    /// <summary>
-    ///     Check if a token is revoked
-    /// </summary>
     Task<bool> IsTokenRevokedAsync(string jti);
 }
 
@@ -121,15 +103,8 @@ public sealed class RedisTokenRevocationService : ITokenRevocationService
     }
 }
 
-/// <summary>
-///     Extension methods for token revocation
-/// </summary>
 public static class TokenRevocationExtensions
 {
-    /// <summary>
-    ///     Adds token revocation middleware.
-    ///     Must be called after UseAuthentication() and before UseAuthorization()
-    /// </summary>
     public static IApplicationBuilder UseTokenRevocation(this IApplicationBuilder app)
     {
         return app.UseMiddleware<TokenRevocationMiddleware>();

@@ -5,10 +5,6 @@ using GameService.Sdk.LuckyMine;
 
 namespace GameService.Tests;
 
-/// <summary>
-/// 🧪 SDK Integration Tests
-/// Uses a shared Aspire host for all tests to avoid resource conflicts
-/// </summary>
 [TestFixture]
 public class SdkIntegrationTests
 {

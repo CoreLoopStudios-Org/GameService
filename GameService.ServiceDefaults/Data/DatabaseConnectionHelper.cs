@@ -6,14 +6,8 @@ using Npgsql;
 
 namespace GameService.ServiceDefaults.Data;
 
-/// <summary>
-///     Helper for configuring PostgreSQL connections with pooling and read replicas.
-/// </summary>
 public static class DatabaseConnectionHelper
 {
-    /// <summary>
-    ///     Configures the primary DbContext with connection pooling settings.
-    /// </summary>
     public static void ConfigureNpgsqlWithPooling(
         DbContextOptionsBuilder options,
         string connectionString,
@@ -40,9 +34,6 @@ public static class DatabaseConnectionHelper
         });
     }
 
-    /// <summary>
-    ///     Builds a connection string with pooling settings applied.
-    /// </summary>
     public static string BuildConnectionString(string baseConnectionString, DatabaseOptions dbOptions)
     {
         var builder = new NpgsqlConnectionStringBuilder(baseConnectionString)
@@ -59,10 +50,6 @@ public static class DatabaseConnectionHelper
     }
 }
 
-/// <summary>
-///     Read-only DbContext for queries that can use a read replica.
-///     Use this for player lookups, leaderboards, and history queries.
-/// </summary>
 public class ReadOnlyGameDbContext : GameDbContext
 {
     public ReadOnlyGameDbContext(DbContextOptions<ReadOnlyGameDbContext> options)
@@ -92,15 +79,8 @@ public class ReadOnlyGameDbContext : GameDbContext
     }
 }
 
-/// <summary>
-///     Extension methods for registering database contexts with pooling.
-/// </summary>
 public static class DatabaseServiceExtensions
 {
-    /// <summary>
-    ///     Adds a read-only DbContext that uses the read replica if configured.
-    ///     Falls back to primary connection if no replica is configured.
-    /// </summary>
     public static IServiceCollection AddReadOnlyDbContext(
         this IServiceCollection services,
         IConfiguration configuration,

@@ -2,22 +2,13 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace GameService.GameCore;
 
-/// <summary>
-///     Extension methods for registering game modules with keyed services
-/// </summary>
 public static class GameServiceExtensions
 {
-    /// <summary>
-    ///     Add the game platform infrastructure
-    /// </summary>
     public static IServiceCollection AddGamePlatform(this IServiceCollection services)
     {
         return services;
     }
 
-    /// <summary>
-    ///     Register a game module with keyed services for O(1) lookup
-    /// </summary>
     public static IServiceCollection AddGameModule<TModule>(this IServiceCollection services)
         where TModule : IGameModule, new()
     {
@@ -30,9 +21,6 @@ public static class GameServiceExtensions
         return services;
     }
 
-    /// <summary>
-    ///     Register a game engine with a keyed service
-    /// </summary>
     public static IServiceCollection AddKeyedGameEngine<TEngine>(
         this IServiceCollection services,
         string gameType)
@@ -42,9 +30,6 @@ public static class GameServiceExtensions
         return services;
     }
 
-    /// <summary>
-    ///     Register a game room service with a keyed service
-    /// </summary>
     public static IServiceCollection AddKeyedGameRoomService<TService>(
         this IServiceCollection services,
         string gameType)

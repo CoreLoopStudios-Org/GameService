@@ -6,23 +6,6 @@ using GameService.Sdk.Core;
 
 namespace GameService.Sdk.Auth;
 
-/// <summary>
-/// 🔐 Authentication client for GameService
-/// 
-/// Quick start:
-/// <code>
-/// var auth = new AuthClient("https://api.example.com");
-/// 
-/// // Register a new account
-/// var result = await auth.RegisterAsync("player@email.com", "MyP@ssw0rd!");
-/// 
-/// // Or login to existing account
-/// var session = await auth.LoginAsync("player@email.com", "MyP@ssw0rd!");
-/// 
-/// // Get a connected game client!
-/// var gameClient = await session.ConnectToGameAsync();
-/// </code>
-/// </summary>
 public sealed class AuthClient : IDisposable
 {
     private readonly HttpClient _http;
@@ -30,7 +13,6 @@ public sealed class AuthClient : IDisposable
     private readonly JsonSerializerOptions _jsonOptions;
     private bool _disposed;
 
-    /// <summary>Create an auth client for the given server</summary>
     public AuthClient(string baseUrl, HttpClient? httpClient = null)
     {
         _baseUrl = baseUrl.TrimEnd('/');
@@ -42,12 +24,6 @@ public sealed class AuthClient : IDisposable
         };
     }
 
-    /// <summary>
-    /// 📝 Register a new account
-    /// </summary>
-    /// <param name="email">Email address</param>
-    /// <param name="password">Password (min 8 chars, requires uppercase, lowercase, digit, special char)</param>
-    /// <returns>Registration result</returns>
     public async Task<RegisterResult> RegisterAsync(string email, string password)
     {
         var request = new RegisterRequest(email, password);
@@ -67,12 +43,6 @@ public sealed class AuthClient : IDisposable
         return new RegisterResult(false, ParseError(errorBody));
     }
 
-    /// <summary>
-    /// 🔓 Login to an existing account
-    /// </summary>
-    /// <param name="email">Email address</param>
-    /// <param name="password">Password</param>
-    /// <returns>Session with tokens on success</returns>
     public async Task<LoginResult> LoginAsync(string email, string password)
     {
         var request = new LoginRequest(email, password);
@@ -101,9 +71,6 @@ public sealed class AuthClient : IDisposable
         return new LoginResult(true, session, null);
     }
 
-    /// <summary>
-    /// 🔄 Refresh an expired access token
-    /// </summary>
     public async Task<RefreshResult> RefreshTokenAsync(string refreshToken)
     {
         var request = new RefreshRequest(refreshToken);
@@ -127,9 +94,6 @@ public sealed class AuthClient : IDisposable
             : new RefreshResult(false, null, null, "Invalid response");
     }
 
-    /// <summary>
-    /// 👤 Get current player's profile
-    /// </summary>
     public async Task<PlayerProfile?> GetProfileAsync(string accessToken)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/game/me");
@@ -142,9 +106,6 @@ public sealed class AuthClient : IDisposable
         return JsonSerializer.Deserialize<PlayerProfile>(body, _jsonOptions);
     }
 
-    /// <summary>
-    /// 💰 Get current coin balance
-    /// </summary>
     public async Task<long?> GetBalanceAsync(string accessToken)
     {
         var profile = await GetProfileAsync(accessToken);
@@ -189,21 +150,15 @@ public sealed class AuthClient : IDisposable
     }
 }
 
-/// <summary>
-/// 🎮 An authenticated game session - use this to connect to games!
-/// </summary>
 public sealed class GameSession
 {
     private readonly string _baseUrl;
     private readonly AuthClient _authClient;
 
-    /// <summary>Your current access token (JWT)</summary>
     public string AccessToken { get; private set; }
 
-    /// <summary>Refresh token for getting new access tokens</summary>
     public string? RefreshToken { get; private set; }
 
-    /// <summary>Whether the session has valid tokens</summary>
     public bool IsValid => !string.IsNullOrEmpty(AccessToken);
 
     internal GameSession(string baseUrl, string accessToken, string? refreshToken, AuthClient authClient)
@@ -214,9 +169,6 @@ public sealed class GameSession
         _authClient = authClient;
     }
 
-    /// <summary>
-    /// 🎮 Connect to the game server with this session!
-    /// </summary>
     public Task<GameClient> ConnectToGameAsync(CancellationToken cancellationToken = default)
     {
         return GameClient.ConnectAsync(
@@ -228,9 +180,6 @@ public sealed class GameSession
             cancellationToken);
     }
 
-    /// <summary>
-    /// 🔄 Refresh the access token if it's expired
-    /// </summary>
     public async Task<bool> RefreshAsync()
     {
         if (RefreshToken == null) return false;
@@ -243,27 +192,17 @@ public sealed class GameSession
         return true;
     }
 
-    /// <summary>
-    /// 👤 Get your player profile
-    /// </summary>
     public Task<PlayerProfile?> GetProfileAsync() => _authClient.GetProfileAsync(AccessToken);
 
-    /// <summary>
-    /// 💰 Get your coin balance
-    /// </summary>
     public Task<long?> GetBalanceAsync() => _authClient.GetBalanceAsync(AccessToken);
 }
 
-/// <summary>Registration result</summary>
 public sealed record RegisterResult(bool Success, string? Error);
 
-/// <summary>Login result</summary>
 public sealed record LoginResult(bool Success, GameSession? Session, string? Error);
 
-/// <summary>Token refresh result</summary>
 public sealed record RefreshResult(bool Success, string? AccessToken, string? RefreshToken, string? Error);
 
-/// <summary>Player profile</summary>
 public sealed class PlayerProfile
 {
     [JsonPropertyName("userId")]
