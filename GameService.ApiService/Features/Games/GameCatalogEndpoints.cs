@@ -97,7 +97,10 @@ public static class GameCatalogEndpoints
         // Register user location
         await registry.SetUserRoomAsync(userId, roomId);
 
-        return Results.Ok(new { RoomId = roomId, GameType = template.GameType });
+        // Register short code
+        var shortCode = await registry.RegisterShortCodeAsync(roomId);
+
+        return Results.Ok(new { RoomId = roomId, ShortCode = shortCode, GameType = template.GameType });
     }
 
     private static async Task<IResult> GetPublicLobby(

@@ -110,7 +110,7 @@ public sealed class GameClient : IAsyncDisposable
             CurrentRoomId = response.RoomId;
         }
         
-        return new CreateRoomResult(response.Success, response.RoomId, response.ErrorMessage);
+        return new CreateRoomResult(response.Success, response.RoomId, response.ShortCode, response.ErrorMessage);
     }
 
     public async Task<JoinRoomResult> JoinRoomAsync(string roomId)

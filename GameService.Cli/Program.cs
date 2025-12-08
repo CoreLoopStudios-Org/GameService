@@ -1,378 +1,414 @@
-﻿using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text;
-using System.Text.Json;
 using GameService.Sdk.Auth;
 using GameService.Sdk.Core;
-using GameService.Sdk.LuckyMine;
 using GameService.Sdk.Ludo;
+using GameService.Sdk.LuckyMine;
 
-// ==========================================
-// CONFIGURATION
-// ==========================================
-const string BaseUrl = "http://localhost:5525";
-Console.OutputEncoding = Encoding.UTF8;
-Console.Title = "GameService CLI";
+namespace GameService.Cli;
 
-// ==========================================
-// 1. AUTO-AUTH & BOOTSTRAP
-// ==========================================
-WriteHeader("INITIALIZING");
-
-// We need a dedicated HTTP client for Catalog/Matchmaking endpoints
-using var httpClient = new HttpClient { BaseAddress = new Uri(BaseUrl) };
-using var authClient = new AuthClient(BaseUrl, httpClient);
-
-// Generate random credentials
-var randomId = new Random().Next(1000, 9999);
-var email = $"cli_{randomId}@test.local";
-var password = "Password123!";
-
-Console.Write($"[-] Registering {email}... ");
-var regResult = await authClient.RegisterAsync(email, password);
-if (!regResult.Success) { PrintError(regResult.Error!); return; }
-PrintSuccess();
-
-Console.Write($"[-] Logging in... ");
-var loginResult = await authClient.LoginAsync(email, password);
-if (!loginResult.Success) { PrintError(loginResult.Error!); return; }
-PrintSuccess();
-
-var session = loginResult.Session!;
-var token = session.AccessToken;
-httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-var profile = await session.GetProfileAsync();
-Console.WriteLine($"[-] Welcome, {profile?.UserName}! Balance: {profile?.Coins:N0} coins");
-Console.WriteLine();
-
-// ==========================================
-// 2. MAIN MENU
-// ==========================================
-while (true)
+public class Program
 {
-    Console.WriteLine("GAME SELECTOR:");
-    Console.WriteLine("1. Play Ludo (Multiplayer Matchmaking)");
-    Console.WriteLine("2. Play Lucky Mine (Single Player)");
-    Console.WriteLine("3. Exit");
-    Console.Write("> ");
-    
-    var choice = Console.ReadLine();
-    try
-    {
-        Console.WriteLine("[-] Connecting to Game Gateway...");
-        await using var gameClient = await GameClient.ConnectAsync(BaseUrl, token);
-        Console.WriteLine("[-] Connected.");
+    private static string _baseUrl = "http://localhost:5525";
+    private static AuthClient _authClient = null!;
+    private static GameSession _session = null!;
+    private static GameClient _gameClient = null!;
+    private static string _username = "";
 
-        switch (choice)
+    public static async Task Main(string[] args)
+    {
+        Console.OutputEncoding = Encoding.UTF8;
+        if (args.Length > 0) _baseUrl = args[0];
+
+        PrintLogo();
+        Console.WriteLine($"Connecting to {_baseUrl}...");
+
+        _authClient = new AuthClient(_baseUrl);
+
+        try
         {
-            case "1": await RunLudoFlow(httpClient, gameClient); break;
-            case "2": await RunLuckyMineFlow(gameClient); break;
-            case "3": return;
-            default: Console.WriteLine("Invalid selection."); break;
+            await AuthenticateAsync();
+            await MainMenuLoop();
         }
-    }
-    catch (Exception ex)
-    {
-        PrintError(ex.Message);
-        Console.WriteLine("Press any key to retry...");
-        Console.ReadKey();
-    }
-    Console.Clear();
-}
-
-// ==========================================
-// 3. LUDO FLOW (Matchmaking -> Lobby -> Game)
-// ==========================================
-async Task RunLudoFlow(HttpClient http, GameClient socket)
-{
-    var client = new LudoClient(socket);
-
-    // 1. Matchmaking (HTTP)
-    WriteHeader("LUDO MATCHMAKING");
-    Console.WriteLine("Looking for an available room...");
-
-    // We use QuickMatch to find a template-based room or create one automatically
-    var matchReq = new { GameType = "Ludo", MaxPlayers = 4, EntryFee = 0 };
-    var matchRes = await http.PostAsJsonAsync("/games/quick-match", matchReq);
-    
-    if (!matchRes.IsSuccessStatusCode)
-    {
-        PrintError($"Matchmaking failed: {matchRes.StatusCode}");
-        return;
-    }
-
-    var matchData = await matchRes.Content.ReadFromJsonAsync<JsonElement>();
-    var roomId = matchData.GetProperty("roomId").GetString()!;
-    var action = matchData.GetProperty("action").GetString()!;
-
-    Console.WriteLine($"[-] {action} Room: {roomId}");
-
-    // 2. Join SignalR Group
-    var joinRes = await client.JoinGameAsync(roomId);
-    if (!joinRes.Success) { PrintError(joinRes.Error!); return; }
-
-    // 3. Waiting Room / Lobby Loop
-    bool gameStarted = false;
-    
-    // Subscribe to join/leave events to refresh lobby UI
-    client.OnPlayerJoined += (_, _, _) => { if (!gameStarted) RenderLobby(client, roomId); };
-    client.OnPlayerLeft += (_, _) => { if (!gameStarted) RenderLobby(client, roomId); };
-    client.OnStateUpdated += (_) => { if (!gameStarted) RenderLobby(client, roomId); };
-
-    while (!gameStarted)
-    {
-        RenderLobby(client, roomId);
-        
-        // Check start conditions
-        var playerCount = client.State?.ActiveSeatsMask != null 
-            ? System.Numerics.BitOperations.PopCount(client.State.ActiveSeatsMask) 
-            : 1;
-
-        if (playerCount > 1)
+        catch (Exception ex)
         {
-            Console.WriteLine("\n[!] Opponents found! Starting game in 3 seconds...");
-            await Task.Delay(3000);
-            gameStarted = true;
-        }
-        else
-        {
-            Console.WriteLine("\nWaiting for opponents... (Press 'Q' to leave)");
-            if (Console.KeyAvailable)
-            {
-                if (Console.ReadKey(true).Key == ConsoleKey.Q) return;
-            }
-            await Task.Delay(1000);
-        }
-    }
-
-    // 4. Gameplay Loop
-    client.OnStateUpdated += _ => RenderLudoBoard(client);
-    client.OnDiceRolled += (seat, val) => 
-    {
-        Console.ForegroundColor = ConsoleColor.Cyan;
-        Console.WriteLine($"\n🎲 Player {seat} rolled a {val}!");
-        Console.ResetColor();
-        Thread.Sleep(1500);
-    };
-
-    // Initial Render
-    RenderLudoBoard(client);
-
-    bool inGame = true;
-    while (inGame)
-    {
-        if (client.IsGameOver)
-        {
-            Console.WriteLine("\n🏁 GAME OVER! 🏁");
-            Console.ReadKey();
-            break;
-        }
-
-        if (client.IsMyTurn)
-        {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("\n👉 YOUR TURN!");
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Fatal Error: {ex.Message}");
             Console.ResetColor();
+            Console.WriteLine(ex.StackTrace);
+        }
+        finally
+        {
+            if (_gameClient != null) await _gameClient.DisposeAsync();
+            _authClient?.Dispose();
+        }
+    }
 
-            if (client.LastDiceRoll == 0)
+    private static async Task AuthenticateAsync()
+    {
+        var rand = Guid.NewGuid().ToString("N")[..6];
+        var email = $"cli_user_{rand}@test.local";
+        var password = "Password123!";
+        _username = $"Player_{rand}";
+
+        Console.Write("Creating random account... ");
+        var regResult = await _authClient.RegisterAsync(email, password);
+        if (!regResult.Success) throw new Exception($"Register failed: {regResult.Error}");
+        Console.WriteLine("Done.");
+
+        Console.Write("Logging in... ");
+        var loginResult = await _authClient.LoginAsync(email, password);
+        if (!loginResult.Success || loginResult.Session == null) throw new Exception($"Login failed: {loginResult.Error}");
+        _session = loginResult.Session;
+        Console.WriteLine("Success!");
+
+        Console.Write("Connecting to Game Gateway... ");
+        _gameClient = await _session.ConnectToGameAsync();
+        Console.WriteLine("Connected via SignalR.");
+        
+        // Initial balance check
+        var balance = await _session.GetBalanceAsync();
+        Console.WriteLine($"Welcome, {_username}! Balance: {balance:N0} coins.");
+        Console.WriteLine();
+    }
+
+    private static async Task MainMenuLoop()
+    {
+        while (true)
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("\n=== MAIN MENU ===");
+            Console.ResetColor();
+            Console.WriteLine("1. Play Ludo");
+            Console.WriteLine("2. Play LuckyMine");
+            Console.WriteLine("3. Check Wallet");
+            Console.WriteLine("4. Exit");
+            Console.Write("\nSelect option: ");
+
+            var input = Console.ReadLine();
+            switch (input)
             {
-                Console.WriteLine("Press [ENTER] to Roll Dice");
-                Console.ReadLine();
-                var roll = await client.RollDiceAsync();
-                if (!roll.Success) Console.WriteLine($"! {roll.Error}");
+                case "1":
+                    await PlayLudoAsync();
+                    break;
+                case "2":
+                    await PlayLuckyMineAsync();
+                    break;
+                case "3":
+                    var bal = await _session.GetBalanceAsync();
+                    Console.WriteLine($"Current Balance: {bal:N0} coins");
+                    break;
+                case "4":
+                    return;
+                default:
+                    Console.WriteLine("Invalid option.");
+                    break;
             }
-            else
+        }
+    }
+
+    // ==========================================
+    // LUDO GAME LOOP
+    // ==========================================
+
+    private static async Task PlayLudoAsync()
+    {
+        Console.Clear();
+        Console.WriteLine("=== LUDO ===");
+        
+        var ludo = new LudoClient(_gameClient);
+        var tcs = new TaskCompletionSource();
+        
+        // Setup Event Handlers
+        ludo.OnStateUpdated += state => RenderLudoBoard(ludo);
+        ludo.OnTurnChanged += seat => 
+        {
+            if (seat == ludo.MySeat) 
             {
-                var legalMoves = client.GetMovableTokens();
-                if (legalMoves.Length == 0)
+                Console.Beep(); // Notify user
+            }
+            RenderLudoBoard(ludo);
+        };
+        ludo.OnGameEnded += winners => 
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("\nGAME OVER!");
+            Console.WriteLine($"Winner Seat: {winners.FirstOrDefault()}");
+            Console.ResetColor();
+            Console.WriteLine("Press Enter to return to menu...");
+            Console.ReadLine();
+            tcs.TrySetResult();
+        };
+
+        // Create or Join
+        Console.WriteLine("1. Create New Game");
+        Console.WriteLine("2. Join Existing Room (Enter ID)");
+        Console.Write("Select: ");
+        var mode = Console.ReadLine();
+        
+        string? roomId = null;
+
+        if (mode == "1")
+        {
+            var result = await ludo.CreateGameAsync();
+            if (!result.Success)
+            {
+                Console.WriteLine($"Error: {result.Error}");
+                return;
+            }
+            roomId = result.RoomId;
+        }
+        else if (mode == "2")
+        {
+            Console.Write("Room ID: ");
+            roomId = Console.ReadLine()?.Trim();
+            if (string.IsNullOrEmpty(roomId)) return;
+            
+            var result = await ludo.JoinGameAsync(roomId);
+            if (!result.Success)
+            {
+                Console.WriteLine($"Error: {result.Error}");
+                return;
+            }
+        }
+        else return;
+
+        Console.WriteLine($"Entered Room: {roomId}");
+        Console.WriteLine("Waiting for game start or action...");
+
+        // Input Loop
+        var inputTask = Task.Run(async () =>
+        {
+            while (!tcs.Task.IsCompleted)
+            {
+                // Simple blocking wait for user input when it's their turn
+                // In a real CLI, we might handle this more elegantly to not block rendering
+                // but for this demo, we assume the user knows when to type based on the render.
+                
+                if (ludo.IsMyTurn && !ludo.IsGameOver)
                 {
-                    Console.WriteLine("No legal moves. Passing turn...");
-                    await Task.Delay(2000);
-                }
-                else if (legalMoves.Length == 1)
-                {
-                    Console.WriteLine("Auto-moving only legal token...");
-                    await client.MoveTokenAsync(legalMoves[0]);
+                    Console.Write("> Your Turn (R)oll, (M)ove <0-3>, (Q)uit: ");
+                    var cmd = Console.ReadLine()?.Trim().ToLower();
+                    
+                    if (cmd == "q")
+                    {
+                        await ludo.LeaveGameAsync();
+                        tcs.TrySetResult();
+                        break;
+                    }
+                    else if (cmd == "r")
+                    {
+                        var res = await ludo.RollDiceAsync();
+                        if (!res.Success) Console.WriteLine($"Error: {res.Error}");
+                    }
+                    else if (cmd?.StartsWith("m") == true)
+                    {
+                        var parts = cmd.Split(' ');
+                        if (parts.Length > 1 && int.TryParse(parts[1], out var tIdx))
+                        {
+                            var res = await ludo.MoveTokenAsync(tIdx);
+                            if (!res.Success) Console.WriteLine($"Error: {res.Error}");
+                        }
+                    }
                 }
                 else
                 {
-                    Console.WriteLine($"Choose Token: [{string.Join(", ", legalMoves)}]");
-                    Console.Write("> ");
-                    var input = Console.ReadLine();
-                    if (int.TryParse(input, out int tIdx) && legalMoves.Contains(tIdx))
-                    {
-                        await client.MoveTokenAsync(tIdx);
-                    }
+                    await Task.Delay(500);
                 }
             }
-        }
-        else
-        {
-            await Task.Delay(500);
-        }
-    }
-    
-    await socket.LeaveRoomAsync();
-}
+        });
 
-// ==========================================
-// 4. LUCKY MINE FLOW
-// ==========================================
-async Task RunLuckyMineFlow(GameClient socket)
-{
-    var client = new LuckyMineClient(socket);
-    WriteHeader("LUCKY MINE");
-    
-    // We use templates here because it's single player, created on demand
-    Console.WriteLine("1. Normal (5 Mines)");
-    Console.WriteLine("2. High Risk (15 Mines)");
-    Console.Write("> ");
-    var tName = Console.ReadLine() == "2" ? "High Risk Mines" : "5Mines";
-
-    var res = await client.StartGameAsync(tName);
-    if (!res.Success) { PrintError(res.Error!); return; }
-
-    while (client.IsActive)
-    {
-        RenderMineField(client);
-        Console.WriteLine("\nCommands: [0-24] Reveal Tile | [C] Cashout");
-        Console.Write("> ");
-        var cmd = Console.ReadLine()?.ToUpper();
-
-        if (cmd == "C") await client.CashOutAsync();
-        else if (int.TryParse(cmd, out int tIdx)) await client.RevealTileAsync(tIdx);
-    }
-
-    RenderMineField(client);
-    if (client.HitMine) Console.WriteLine("\n💥 BOOM! Game Over.");
-    if (client.CashedOut) Console.WriteLine($"\n💰 WON {client.CurrentWinnings:N0} COINS!");
-    
-    Console.WriteLine("Press any key...");
-    Console.ReadKey();
-    await socket.LeaveRoomAsync();
-}
-
-// ==========================================
-// 5. UI HELPERS
-// ==========================================
-void RenderLobby(LudoClient client, string roomId)
-{
-    Console.Clear();
-    WriteHeader($"LOBBY: {roomId}");
-    
-    Console.WriteLine("Waiting for players to fill the room...\n");
-    
-    for (int i = 0; i < 4; i++)
-    {
-        var isActive = client.IsSeatActive(i);
-        var isMe = client.MySeat == i;
+        await Task.WhenAny(tcs.Task, inputTask);
         
-        Console.Write($"Seat {i}: ");
-        if (isActive)
+        // Cleanup
+        ludo.OnStateUpdated -= null;
+        Console.WriteLine("Exiting Ludo...");
+    }
+
+    private static void RenderLudoBoard(LudoClient client)
+    {
+        if (client.State == null) return;
+        
+        // Clear logic is tricky with async input, so we just print updates for this simple CLI
+        // Or we can be aggressive:
+        Console.Clear();
+        
+        Console.WriteLine($"=== LUDO ROOM: {_gameClient.CurrentRoomId} ===");
+        Console.WriteLine($"My Seat: {client.MySeat} | Active Seats: {client.State.ActiveSeatsMask}");
+        
+        Console.ForegroundColor = client.IsMyTurn ? ConsoleColor.Green : ConsoleColor.Yellow;
+        Console.WriteLine($"CURRENT TURN: Player {client.State.CurrentPlayer}");
+        if (client.State.LastDiceRoll > 0)
         {
-            Console.ForegroundColor = isMe ? ConsoleColor.Green : ConsoleColor.Yellow;
-            Console.WriteLine(isMe ? "YOU" : "OCCUPIED");
-        }
-        else
-        {
-            Console.ForegroundColor = ConsoleColor.DarkGray;
-            Console.WriteLine("Waiting...");
+            Console.WriteLine($"DICE ROLLED: {client.State.LastDiceRoll}");
         }
         Console.ResetColor();
-    }
-}
+        Console.WriteLine("----------------------------------");
 
-void RenderLudoBoard(LudoClient client)
-{
-    Console.Clear();
-    WriteHeader($"LUDO ROOM");
-
-    // Top Status Bar
-    Console.BackgroundColor = ConsoleColor.DarkGray;
-    Console.ForegroundColor = ConsoleColor.White;
-    Console.WriteLine($" P{client.State?.CurrentPlayer}'s TURN | Roll: {(client.State?.LastDiceRoll == 0 ? "-" : client.State?.LastDiceRoll.ToString())} ".PadRight(42));
-    Console.ResetColor();
-    Console.WriteLine();
-
-    // Player Lanes
-    for (int p = 0; p < 4; p++)
-    {
-        if (!client.IsSeatActive(p)) continue;
-        
-        var isTurn = client.State?.CurrentPlayer == p;
-        var color = p switch { 0 => ConsoleColor.Red, 1 => ConsoleColor.Green, 2 => ConsoleColor.Yellow, 3 => ConsoleColor.Blue, _ => ConsoleColor.White };
-        
-        if (isTurn) Console.Write("👉 "); else Console.Write("   ");
-        
-        Console.ForegroundColor = color;
-        Console.Write($"PLAYER {p}");
-        if (p == client.MySeat) Console.Write(" (YOU)");
-        Console.ResetColor();
-        Console.WriteLine();
-
-        var tokens = client.GetPlayerTokens(p);
-        Console.Write("   ");
-        for (int t = 0; t < 4; t++)
+        for (int i = 0; i < 4; i++)
         {
-            var pos = tokens[t];
-            var display = pos switch { 0 => " B ", 57 => "WIN", _ => pos.ToString("000") };
+            var tokens = client.GetPlayerTokens(i);
+            var isTurn = client.State.CurrentPlayer == i;
+            var marker = isTurn ? "*" : " ";
             
-            // Highlight movable tokens
-            if (isTurn && client.MySeat == p && client.GetMovableTokens().Contains(t))
+            Console.Write($"P{i}{marker}: ");
+            for (int t = 0; t < 4; t++)
             {
-                Console.BackgroundColor = ConsoleColor.White;
-                Console.ForegroundColor = ConsoleColor.Black;
+                var pos = tokens[t];
+                string posStr = pos switch
+                {
+                    0 => "B", // Base
+                    57 => "H", // Home
+                    _ => pos.ToString()
+                };
+                Console.Write($"[{t}:{posStr}] ");
             }
-            Console.Write($"[{display}]");
-            Console.ResetColor();
-            Console.Write(" ");
+            Console.WriteLine();
         }
-        Console.WriteLine("\n");
-    }
-}
-
-void RenderMineField(LuckyMineClient client)
-{
-    Console.Clear();
-    WriteHeader("LUCKY MINE");
-    Console.WriteLine($"Winnings: {client.CurrentWinnings:N0} | Mines: {client.TotalMines}");
-    Console.WriteLine("-------------------------");
-    
-    for (int i = 0; i < client.TotalTiles; i++)
-    {
-        if (client.IsTileRevealed(i))
+        Console.WriteLine("----------------------------------");
+        if (client.IsMyTurn)
         {
-            if (client.IsTileMine(i))
-            {
-                Console.BackgroundColor = ConsoleColor.Red;
-                Console.Write("[ X ]");
-            }
-            else
-            {
-                Console.BackgroundColor = ConsoleColor.Green;
-                Console.ForegroundColor = ConsoleColor.Black;
-                Console.Write("[ $ ]");
-            }
+            Console.WriteLine("YOUR TURN! Commands: (R)oll, (M)ove <0-3>, (Q)uit");
         }
         else
         {
-            Console.ForegroundColor = ConsoleColor.DarkGray;
-            Console.Write($"[{i:00}]");
+            Console.WriteLine("Waiting for opponent...");
         }
-        Console.ResetColor();
+    }
+
+    // ==========================================
+    // LUCKY MINE GAME LOOP
+    // ==========================================
+
+    private static async Task PlayLuckyMineAsync()
+    {
+        Console.Clear();
+        Console.WriteLine("=== LUCKY MINE ===");
         
-        if ((i + 1) % 5 == 0) Console.WriteLine(); else Console.Write(" ");
+        var mines = new LuckyMineClient(_gameClient);
+        var tcs = new TaskCompletionSource();
+
+        mines.OnStateUpdated += state => RenderMineField(mines);
+        mines.OnMineHit += () => 
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("\nBOOM! You hit a mine!");
+            Console.ResetColor();
+            Console.WriteLine("Press Enter...");
+            Console.ReadLine();
+            tcs.TrySetResult();
+        };
+        mines.OnCashedOut += (amount) => 
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"\nCASHED OUT! Won {amount:N0} coins!");
+            Console.ResetColor();
+            Console.WriteLine("Press Enter...");
+            Console.ReadLine();
+            tcs.TrySetResult();
+        };
+
+        Console.Write("Enter bet amount (10-1000): ");
+        if (!int.TryParse(Console.ReadLine(), out var bet)) bet = 100;
+        
+        // In this implementation, we assume we use a template for simplicity
+        // Or create a custom game. Let's create from "5Mines" template.
+        Console.WriteLine("Starting game (5 Mines)...");
+        var result = await mines.StartGameAsync("5Mines");
+        if (!result.Success)
+        {
+            Console.WriteLine($"Failed to start: {result.Error}");
+            return;
+        }
+
+        RenderMineField(mines);
+
+        var inputTask = Task.Run(async () =>
+        {
+            while (!tcs.Task.IsCompleted)
+            {
+                if (mines.IsActive)
+                {
+                    Console.Write("> (R)eveal <0-24>, (C)ashout, (Q)uit: ");
+                    var cmd = Console.ReadLine()?.Trim().ToLower();
+
+                    if (cmd == "q")
+                    {
+                        await _gameClient.LeaveRoomAsync();
+                        tcs.TrySetResult();
+                        break;
+                    }
+                    else if (cmd == "c")
+                    {
+                        await mines.CashOutAsync();
+                    }
+                    else if (cmd?.StartsWith("r") == true)
+                    {
+                        var parts = cmd.Split(' ');
+                        if (parts.Length > 1 && int.TryParse(parts[1], out var tIdx))
+                        {
+                            await mines.RevealTileAsync(tIdx);
+                        }
+                    }
+                }
+                else
+                {
+                    await Task.Delay(500);
+                }
+            }
+        });
+
+        await Task.WhenAny(tcs.Task, inputTask);
+        Console.WriteLine("Exiting LuckyMine...");
+    }
+
+    private static void RenderMineField(LuckyMineClient client)
+    {
+        Console.Clear();
+        Console.WriteLine($"=== LUCKY MINE (Pot: {client.CurrentWinnings:N0}) ===");
+        
+        int rows = 5;
+        int cols = 5;
+
+        for (int r = 0; r < rows; r++)
+        {
+            for (int c = 0; c < cols; c++)
+            {
+                int idx = r * cols + c;
+                if (client.IsTileRevealed(idx))
+                {
+                    if (client.IsTileMine(idx))
+                    {
+                        Console.Write("[X] ");
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.Write("[✓] ");
+                        Console.ResetColor();
+                    }
+                }
+                else
+                {
+                    Console.Write($"[{idx:00}] ");
+                }
+            }
+            Console.WriteLine();
+        }
+        Console.WriteLine("----------------------------------");
+    }
+
+    private static void PrintLogo()
+    {
+        Console.ForegroundColor = ConsoleColor.Magenta;
+        Console.WriteLine(@"
+   _____                      _____                 _          
+  / ____|                    / ____|               (_)         
+ | |  __  __ _ _ __ ___     | (___   ___ _ ____   ___  ___ ___ 
+ | | |_ |/ _` | '_ ` _ \     \___ \ / _ \ '__\ \ / / |/ __/ _ \
+ | |__| | (_| | | | | | |    ____) |  __/ |   \ V /| | (_|  __/
+  \_____|\__,_|_| |_| |_|   |_____/ \___|_|    \_/ |_|\___\___|
+                                                               
+        ");
+        Console.ResetColor();
     }
 }
-
-void WriteHeader(string title)
-{
-    Console.Clear();
-    Console.WriteLine("==========================================");
-    Console.WriteLine($"   {title}");
-    Console.WriteLine("==========================================");
-}
-
-void PrintSuccess() { Console.ForegroundColor = ConsoleColor.Green; Console.WriteLine("OK"); Console.ResetColor(); }
-void PrintError(string err) { Console.ForegroundColor = ConsoleColor.Red; Console.WriteLine($"FAILED: {err}"); Console.ResetColor(); }

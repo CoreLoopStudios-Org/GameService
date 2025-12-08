@@ -31,6 +31,51 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
         await Task.CompletedTask;
     }
 
+    private const string ShortCodeRegistryKey = "global:short_codes";
+    private const string RoomShortCodeKey = "global:room_short_codes";
+
+    public async Task<string> RegisterShortCodeAsync(string roomId)
+    {
+        // Try to generate a unique code up to 10 times
+        for (var i = 0; i < 10; i++)
+        {
+            // Generate 5-digit code (11111 to 99999) using only 1-9
+            var code = string.Create(5, (object?)null, (span, _) =>
+            {
+                for (var k = 0; k < span.Length; k++)
+                    span[k] = (char)('1' + System.Security.Cryptography.RandomNumberGenerator.GetInt32(9));
+            });
+
+            // Try to set if not exists
+            if (await _db.HashSetAsync(ShortCodeRegistryKey, code, roomId, When.NotExists))
+            {
+                // Store reverse mapping for cleanup
+                await _db.HashSetAsync(RoomShortCodeKey, roomId, code);
+                return code;
+            }
+        }
+
+        throw new InvalidOperationException("Failed to generate a unique short code after multiple attempts.");
+    }
+
+    public async Task<string?> GetRoomIdByShortCodeAsync(string shortCode)
+    {
+        var roomId = await _db.HashGetAsync(ShortCodeRegistryKey, shortCode);
+        return roomId.IsNullOrEmpty ? null : roomId.ToString();
+    }
+
+    public async Task RemoveShortCodeAsync(string shortCode)
+    {
+        var roomId = await GetRoomIdByShortCodeAsync(shortCode);
+        if (roomId != null)
+        {
+            var batch = _db.CreateBatch();
+            _ = batch.HashDeleteAsync(ShortCodeRegistryKey, shortCode);
+            _ = batch.HashDeleteAsync(RoomShortCodeKey, roomId);
+            batch.Execute();
+        }
+    }
+
     public async Task UnregisterRoomAsync(string roomId)
     {
         var gameType = await GetGameTypeAsync(roomId);
@@ -40,6 +85,15 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
         _ = batch.HashDeleteAsync(GlobalRegistryKey, roomId);
         _ = batch.SortedSetRemoveAsync(GameTypeIndexKey(gameType), roomId);
         _ = batch.SortedSetRemoveAsync(ActivityIndexKey(gameType), roomId);
+        
+        // Also clean up short code if exists
+        var shortCode = await _db.HashGetAsync(RoomShortCodeKey, roomId);
+        if (!shortCode.IsNullOrEmpty)
+        {
+            _ = batch.HashDeleteAsync(ShortCodeRegistryKey, shortCode);
+            _ = batch.HashDeleteAsync(RoomShortCodeKey, roomId);
+        }
+
         batch.Execute();
     }
 

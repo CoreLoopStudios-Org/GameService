@@ -142,7 +142,17 @@ public class EconomyService(
                             return new TransactionResult(false, 0, TransactionErrorType.Unknown,
                                 "User account not found.");
 
-                        var initialCoins = _initialCoins + amount;
+                        // Check for dynamic initial coins setting
+                        var dynamicInitial = await db.GlobalSettings
+                            .AsNoTracking()
+                            .Where(s => s.Key == "Economy:InitialCoins")
+                            .Select(s => s.Value)
+                            .FirstOrDefaultAsync();
+
+                        long startCoins = _initialCoins;
+                        if (long.TryParse(dynamicInitial, out var parsed)) startCoins = parsed;
+
+                        var initialCoins = startCoins + amount;
                         if (initialCoins < 0)
                             return new TransactionResult(false, 0, TransactionErrorType.InsufficientFunds,
                                 "Insufficient funds for initial operation");

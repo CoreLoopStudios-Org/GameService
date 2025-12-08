@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.DTOs;
 using GameService.ServiceDefaults.Security;
@@ -15,7 +16,101 @@ public static class EconomyEndpoints
 
         group.MapPost("/coins/transaction", ProcessTransaction);
         group.MapGet("/coins/history", GetTransactionHistory);
+
+        group.MapPost("/daily-login", ClaimDailyLogin);
+        group.MapPost("/daily-spin", ClaimDailySpin);
     }
+
+    private static async Task<IResult> ClaimDailyLogin(
+        HttpContext ctx,
+        GameDbContext db,
+        IEconomyService economy)
+    {
+        var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
+
+        var settings = await db.GlobalSettings
+            .Where(s => s.Key.StartsWith("Economy:DailyLogin"))
+            .ToDictionaryAsync(s => s.Key, s => s.Value);
+
+        if (!settings.TryGetValue("Economy:DailyLoginEnabled", out var enabled) || enabled != "true")
+            return Results.BadRequest("Daily login rewards are disabled.");
+
+        if (!settings.TryGetValue("Economy:DailyLoginReward", out var amountStr) || !long.TryParse(amountStr, out var amount))
+            amount = 100; // Default
+
+        var profile = await db.PlayerProfiles.FirstOrDefaultAsync(p => p.UserId == userId);
+        if (profile == null) return Results.NotFound("Profile not found");
+
+        if (profile.LastDailyLogin.HasValue && profile.LastDailyLogin.Value.Date == DateTimeOffset.UtcNow.Date)
+            return Results.BadRequest("Already claimed today.");
+
+        var result = await economy.ProcessTransactionAsync(userId, amount, "DAILY_LOGIN", $"LOGIN:{DateTimeOffset.UtcNow:yyyyMMdd}");
+        if (!result.Success) return Results.BadRequest(result.ErrorMessage);
+
+        profile.LastDailyLogin = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Results.Ok(new { Reward = amount, NewBalance = result.NewBalance });
+    }
+
+    private static async Task<IResult> ClaimDailySpin(
+        HttpContext ctx,
+        GameDbContext db,
+        IEconomyService economy)
+    {
+        var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
+
+        var settings = await db.GlobalSettings
+            .Where(s => s.Key.StartsWith("Economy:DailySpin"))
+            .ToDictionaryAsync(s => s.Key, s => s.Value);
+
+        if (!settings.TryGetValue("Economy:DailySpinEnabled", out var enabled) || enabled != "true")
+            return Results.BadRequest("Daily spin is disabled.");
+
+        var profile = await db.PlayerProfiles.FirstOrDefaultAsync(p => p.UserId == userId);
+        if (profile == null) return Results.NotFound("Profile not found");
+
+        if (profile.LastDailySpin.HasValue && profile.LastDailySpin.Value.Date == DateTimeOffset.UtcNow.Date)
+            return Results.BadRequest("Already spun today.");
+
+        // Parse rewards
+        long rewardAmount = 50; // Fallback
+        if (settings.TryGetValue("Economy:DailySpinRewards", out var json))
+        {
+            try
+            {
+                var rewards = JsonSerializer.Deserialize<List<SpinReward>>(json);
+                if (rewards != null && rewards.Count > 0)
+                {
+                    var totalWeight = rewards.Sum(r => r.Weight);
+                    var roll = Random.Shared.Next(0, totalWeight);
+                    var current = 0;
+                    foreach (var r in rewards)
+                    {
+                        current += r.Weight;
+                        if (roll < current)
+                        {
+                            rewardAmount = r.Amount;
+                            break;
+                        }
+                    }
+                }
+            }
+            catch { /* Ignore parse errors */ }
+        }
+
+        var result = await economy.ProcessTransactionAsync(userId, rewardAmount, "DAILY_SPIN", $"SPIN:{DateTimeOffset.UtcNow:yyyyMMdd}");
+        if (!result.Success) return Results.BadRequest(result.ErrorMessage);
+
+        profile.LastDailySpin = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Results.Ok(new { Reward = rewardAmount, NewBalance = result.NewBalance });
+    }
+
+    private record SpinReward(long Amount, int Weight);
 
     private static async Task<IResult> ProcessTransaction(
         [FromBody] UpdateCoinRequest req,

@@ -94,7 +94,7 @@ public class SdkSmokeTests
     [Test]
     public void Sdk_Result_Types_Have_Success_Property()
     {
-        var createResult = new Sdk.Core.CreateRoomResult(true, "ABC123", null);
+        var createResult = new Sdk.Core.CreateRoomResult(true, "ABC123", "12345", null);
         var joinResult = new Sdk.Core.JoinRoomResult(true, 0, null);
         var actionResult = new Sdk.Core.ActionResult(false, "Not your turn", null);
         var diceResult = new Sdk.Ludo.DiceRollResult(true, 6, true, new[] { 0, 2 }, null);

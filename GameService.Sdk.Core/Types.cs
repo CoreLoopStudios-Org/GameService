@@ -12,7 +12,7 @@ public sealed record GameState(
     IReadOnlyDictionary<string, int> PlayerSeats,
     object? GameData);
 
-public sealed record CreateRoomResult(bool Success, string? RoomId, string? Error);
+public sealed record CreateRoomResult(bool Success, string? RoomId, string? ShortCode, string? Error);
 
 public sealed record JoinRoomResult(bool Success, int SeatIndex, string? Error);
 
@@ -50,7 +50,7 @@ public sealed record QuickMatchRequest(string GameType, int MaxPlayers, long Ent
 
 public sealed record QuickMatchResponse(string RoomId, string Action);
 
-internal sealed record CreateRoomResponse(bool Success, string? RoomId, string? ErrorMessage);
+internal sealed record CreateRoomResponse(bool Success, string? RoomId, string? ShortCode, string? ErrorMessage);
 internal sealed record JoinRoomResponse(bool Success, int SeatIndex, string? ErrorMessage);
 internal sealed record SpectateRoomResponse(bool Success, string? ErrorMessage);
 

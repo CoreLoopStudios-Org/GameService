@@ -22,6 +22,7 @@ public class GameDbContext : IdentityDbContext<ApplicationUser>
     }
 
     public DbSet<PlayerProfile> PlayerProfiles => Set<PlayerProfile>();
+    public DbSet<GlobalSetting> GlobalSettings => Set<GlobalSetting>();
     public DbSet<GameRoomTemplate> RoomTemplates => Set<GameRoomTemplate>();
     public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
     public DbSet<ArchivedGame> ArchivedGames => Set<ArchivedGame>();
@@ -193,6 +194,21 @@ public class PlayerProfile
     public bool IsDeleted { get; set; }
 
     public DateTimeOffset? DeletedAt { get; set; }
+
+    public DateTimeOffset? LastDailyLogin { get; set; }
+    public DateTimeOffset? LastDailySpin { get; set; }
+}
+
+public class GlobalSetting
+{
+    [Key]
+    [MaxLength(100)]
+    public required string Key { get; set; }
+
+    public required string Value { get; set; }
+
+    [MaxLength(255)]
+    public string? Description { get; set; }
 }
 
 public class GameRoomTemplate

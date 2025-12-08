@@ -34,10 +34,10 @@ public sealed class GameCatalogClient
         {
             using var stream = await response.Content.ReadAsStreamAsync();
             var result = await JsonSerializer.DeserializeAsync<CreateRoomResponseInternal>(stream, _jsonOptions, ct);
-            return new CreateRoomResult(true, result?.RoomId, null);
+            return new CreateRoomResult(true, result?.RoomId, result?.ShortCode, null);
         }
         
-        return new CreateRoomResult(false, null, await response.Content.ReadAsStringAsync());
+        return new CreateRoomResult(false, null, null, await response.Content.ReadAsStringAsync());
     }
 
     public async Task<IReadOnlyList<GameRoomDto>> GetLobbyAsync(string gameType, int page = 1, int pageSize = 20, CancellationToken ct = default)
@@ -63,5 +63,5 @@ public sealed class GameCatalogClient
         return await JsonSerializer.DeserializeAsync<QuickMatchResponse>(stream, _jsonOptions, ct);
     }
 
-    private record CreateRoomResponseInternal(string RoomId, string GameType);
+    private record CreateRoomResponseInternal(string RoomId, string ShortCode, string GameType);
 }

@@ -188,7 +188,7 @@ public class GameHub(
             .AsNoTracking()
             .FirstOrDefaultAsync(t => t.Name == templateName);
 
-        if (template == null) return new CreateRoomResponse(false, null, $"Room type '{templateName}' not found.");
+        if (template == null) return new CreateRoomResponse(false, null, null, $"Room type '{templateName}' not found.");
 
         return await CreateRoomInternal(template.GameType, template.MaxPlayers, template.EntryFee, template.ConfigJson);
     }
@@ -197,14 +197,14 @@ public class GameHub(
         string? configJson)
     {
         if (string.IsNullOrWhiteSpace(gameType))
-            return new CreateRoomResponse(false, null, "Game type is required.");
+            return new CreateRoomResponse(false, null, null, "Game type is required.");
 
         if (maxPlayers < 1 || maxPlayers > 100)
-            return new CreateRoomResponse(false, null, "Max players must be between 1 and 100.");
+            return new CreateRoomResponse(false, null, null, "Max players must be between 1 and 100.");
 
         var roomService = serviceProvider.GetKeyedService<IGameRoomService>(gameType);
         if (roomService == null)
-            return new CreateRoomResponse(false, null, $"Game type '{gameType}' is not supported.");
+            return new CreateRoomResponse(false, null, null, $"Game type '{gameType}' is not supported.");
 
         try
         {
@@ -220,7 +220,7 @@ public class GameHub(
                 catch (JsonException ex)
                 {
                     logger.LogWarning(ex, "Invalid JSON config for game type {GameType}", gameType);
-                    return new CreateRoomResponse(false, null, "Invalid configuration JSON format.");
+                    return new CreateRoomResponse(false, null, null, "Invalid configuration JSON format.");
                 }
 
             var meta = new GameRoomMeta
@@ -235,6 +235,9 @@ public class GameHub(
 
             var roomId = await roomService.CreateRoomAsync(meta);
 
+            // Register short code
+            var shortCode = await roomRegistry.RegisterShortCodeAsync(roomId);
+
             await roomRegistry.SetUserRoomAsync(UserId, roomId);
 
             await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
@@ -242,17 +245,25 @@ public class GameHub(
             logger.LogInformation("Room {RoomId} created (Type: {GameType}, MaxPlayers: {MaxPlayers}) by {UserId}",
                 roomId, gameType, maxPlayers, UserId);
 
-            return new CreateRoomResponse(true, roomId, null);
+            return new CreateRoomResponse(true, roomId, shortCode, null);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to create room for game type {GameType}", gameType);
-            return new CreateRoomResponse(false, null, "An unexpected error occurred while creating the room.");
+            return new CreateRoomResponse(false, null, null, "An unexpected error occurred while creating the room.");
         }
     }
 
-    public async Task<JoinRoomResponse> JoinRoom(string roomId)
+    public async Task<JoinRoomResponse> JoinRoom(string roomIdOrCode)
     {
+        string roomId = roomIdOrCode;
+        if (roomIdOrCode.Length == 5 && roomIdOrCode.All(char.IsDigit))
+        {
+            var resolvedId = await roomRegistry.GetRoomIdByShortCodeAsync(roomIdOrCode);
+            if (resolvedId == null) return new JoinRoomResponse(false, -1, "Invalid room code");
+            roomId = resolvedId;
+        }
+
         var gameType = await roomRegistry.GetGameTypeAsync(roomId);
         if (gameType == null) return new JoinRoomResponse(false, -1, "Room not found");
 
@@ -481,7 +492,7 @@ public class GameHub(
     }
 }
 
-public sealed record CreateRoomResponse(bool Success, string? RoomId, string? ErrorMessage);
+public sealed record CreateRoomResponse(bool Success, string? RoomId, string? ShortCode, string? ErrorMessage);
 
 public sealed record JoinRoomResponse(bool Success, int SeatIndex, string? ErrorMessage);
 

@@ -36,6 +36,42 @@ public static class AdminEndpoints
         group.MapGet("/players/{userId}/history", GetPlayerHistory);
         group.MapPost("/players/{userId}/coins", UpdatePlayerCoins);
         group.MapDelete("/players/{userId}", DeletePlayer);
+
+        group.MapGet("/settings", GetSettings);
+        group.MapPut("/settings", UpdateSetting);
+    }
+
+    private static async Task<IResult> GetSettings(GameDbContext db)
+    {
+        var settings = await db.GlobalSettings.AsNoTracking().ToListAsync();
+        return Results.Ok(settings);
+    }
+
+    private static async Task<IResult> UpdateSetting(
+        [FromBody] UpdateSettingRequest req,
+        GameDbContext db,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("AdminEndpoints");
+
+        if (string.IsNullOrWhiteSpace(req.Key)) return Results.BadRequest("Key is required");
+        if (req.Value == null) return Results.BadRequest("Value is required");
+
+        var setting = await db.GlobalSettings.FindAsync(req.Key);
+        if (setting == null)
+        {
+            setting = new GlobalSetting { Key = req.Key, Value = req.Value, Description = req.Description };
+            db.GlobalSettings.Add(setting);
+        }
+        else
+        {
+            setting.Value = req.Value;
+            if (req.Description != null) setting.Description = req.Description;
+        }
+
+        await db.SaveChangesAsync();
+        logger.LogInformation("Setting updated: {Key} = {Value}", req.Key, req.Value);
+        return Results.Ok(setting);
     }
 
     private static async Task<IResult> GetDashboardStats(
@@ -426,4 +462,5 @@ public static class AdminEndpoints
     }
 
     public record CreateGameRequest(string GameType, int PlayerCount, long EntryFee = 0, string? ConfigJson = null);
+    public record UpdateSettingRequest(string Key, string Value, string? Description);
 }

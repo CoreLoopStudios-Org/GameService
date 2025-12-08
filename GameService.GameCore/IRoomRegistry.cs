@@ -42,4 +42,10 @@ public interface IRoomRegistry
     Task<long> GetOnlinePlayerCountAsync();
 
     Task<HashSet<string>> GetOnlineUserIdsAsync();
+
+    Task<string> RegisterShortCodeAsync(string roomId);
+
+    Task<string?> GetRoomIdByShortCodeAsync(string shortCode);
+
+    Task RemoveShortCodeAsync(string shortCode);
 }
