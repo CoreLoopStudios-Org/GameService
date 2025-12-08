@@ -27,6 +27,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GameService.Sdk.Ludo", "Gam
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GameService.Sdk.LuckyMine", "GameService.Sdk.LuckyMine\GameService.Sdk.LuckyMine.csproj", "{D2424B05-AC59-4714-9DCC-AA24AE046A49}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GameService.Cli", "GameService.Cli\GameService.Cli.csproj", "{455B5F0A-1490-40BE-99F7-1F9BE739C477}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -181,6 +183,18 @@ Global
 		{D2424B05-AC59-4714-9DCC-AA24AE046A49}.Release|x64.Build.0 = Release|Any CPU
 		{D2424B05-AC59-4714-9DCC-AA24AE046A49}.Release|x86.ActiveCfg = Release|Any CPU
 		{D2424B05-AC59-4714-9DCC-AA24AE046A49}.Release|x86.Build.0 = Release|Any CPU
+		{455B5F0A-1490-40BE-99F7-1F9BE739C477}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{455B5F0A-1490-40BE-99F7-1F9BE739C477}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{455B5F0A-1490-40BE-99F7-1F9BE739C477}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{455B5F0A-1490-40BE-99F7-1F9BE739C477}.Debug|x64.Build.0 = Debug|Any CPU
+		{455B5F0A-1490-40BE-99F7-1F9BE739C477}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{455B5F0A-1490-40BE-99F7-1F9BE739C477}.Debug|x86.Build.0 = Debug|Any CPU
+		{455B5F0A-1490-40BE-99F7-1F9BE739C477}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{455B5F0A-1490-40BE-99F7-1F9BE739C477}.Release|Any CPU.Build.0 = Release|Any CPU
+		{455B5F0A-1490-40BE-99F7-1F9BE739C477}.Release|x64.ActiveCfg = Release|Any CPU
+		{455B5F0A-1490-40BE-99F7-1F9BE739C477}.Release|x64.Build.0 = Release|Any CPU
+		{455B5F0A-1490-40BE-99F7-1F9BE739C477}.Release|x86.ActiveCfg = Release|Any CPU
+		{455B5F0A-1490-40BE-99F7-1F9BE739C477}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

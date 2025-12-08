@@ -3,31 +3,6 @@ using GameService.Sdk.Core;
 
 namespace GameService.Sdk.Ludo;
 
-/// <summary>
-/// 🎲 Ludo game client - the classic board game!
-/// 
-/// Quick start:
-/// <code>
-/// // Wrap your GameClient with Ludo-specific functionality
-/// var ludo = new LudoClient(gameClient);
-/// 
-/// // Subscribe to game events
-/// ludo.OnDiceRolled += (player, value) => Console.WriteLine($"{player} rolled {value}!");
-/// ludo.OnTokenMoved += (player, token, from, to) => Console.WriteLine($"Token moved!");
-/// ludo.OnTurnChanged += player => Console.WriteLine($"It's {player}'s turn!");
-/// 
-/// // Create or join a game
-/// await ludo.CreateGameAsync();  // Creates a standard 4-player game
-/// // Or: await ludo.JoinGameAsync("ABC123");
-/// 
-/// // Play!
-/// var roll = await ludo.RollDiceAsync();
-/// if (roll.CanMove)
-/// {
-///     await ludo.MoveTokenAsync(0);  // Move token 0
-/// }
-/// </code>
-/// </summary>
 public sealed class LudoClient
 {
     private readonly GameClient _client;
@@ -48,46 +23,46 @@ public sealed class LudoClient
     /// <summary>Whether the game has ended</summary>
     public bool IsGameOver => _lastState?.IsGameOver ?? false;
 
-    // ═══════════════════════════════════════════════════════════════
-    // 🎯 LUDO-SPECIFIC EVENTS
-    // ═══════════════════════════════════════════════════════════════
+    /// <summary>🎲 A player rolled the dice (seatIndex, value)</summary>
+    public event Action<int, int>? OnDiceRolled;
 
-    /// <summary>🎲 A player rolled the dice</summary>
-    public event Action<int, int>? OnDiceRolled;  // (seatIndex, value)
+    /// <summary>🏃 A token was moved (seatIndex, tokenIndex, fromPos, toPos)</summary>
+    public event Action<int, int, int, int>? OnTokenMoved;
 
-    /// <summary>🏃 A token was moved</summary>
-    public event Action<int, int, int, int>? OnTokenMoved;  // (seatIndex, tokenIndex, fromPos, toPos)
+    /// <summary>💥 A token was captured and sent home (capturedPlayerSeat, tokenIndex)</summary>
+    public event Action<int, int>? OnTokenCaptured;
 
-    /// <summary>💥 A token was captured and sent home</summary>
-    public event Action<int, int>? OnTokenCaptured;  // (capturedPlayerSeat, tokenIndex)
+    /// <summary>🏠 A token reached home (seatIndex, tokenIndex)</summary>
+    public event Action<int, int>? OnTokenFinished;
 
-    /// <summary>🏠 A token reached home (finished)</summary>
-    public event Action<int, int>? OnTokenFinished;  // (seatIndex, tokenIndex)
+    /// <summary>🔄 Turn changed to a different player (newPlayerSeat)</summary>
+    public event Action<int>? OnTurnChanged;
 
-    /// <summary>🔄 Turn changed to a different player</summary>
-    public event Action<int>? OnTurnChanged;  // (newPlayerSeat)
+    /// <summary>⏰ Turn timed out (playerSeat)</summary>
+    public event Action<int>? OnTurnTimeout;
 
-    /// <summary>⏰ Turn timed out (server forced a move or skip)</summary>
-    public event Action<int>? OnTurnTimeout; // (playerSeat)
-
-    /// <summary>🏆 Game ended with a winner ranking</summary>
-    public event Action<int[]>? OnGameEnded;  // (winnerRanking - seats in order of finishing)
+    /// <summary>🏆 Game ended with a winner ranking (winnerRanking - seats in order)</summary>
+    public event Action<int[]>? OnGameEnded;
 
     /// <summary>📊 Game state updated</summary>
     public event Action<LudoState>? OnStateUpdated;
 
+    /// <summary>👋 A player joined the room (seatIndex, userName, userId)</summary>
+    public event Action<int, string, string>? OnPlayerJoined;
+
+    /// <summary>🚪 A player left the room (userId, userName)</summary>
+    public event Action<string, string>? OnPlayerLeft;
+
     public LudoClient(GameClient client)
     {
         _client = client;
-        
-        // Subscribe to core events and translate to Ludo-specific events
+
         _client.OnGameState += HandleGameState;
         _client.OnGameEvent += HandleGameEvent;
-    }
 
-    // ═══════════════════════════════════════════════════════════════
-    // 🏠 ROOM MANAGEMENT
-    // ═══════════════════════════════════════════════════════════════
+        _client.OnPlayerJoined += p => OnPlayerJoined?.Invoke(p.SeatIndex, p.UserName, p.UserId);
+        _client.OnPlayerLeft += p => OnPlayerLeft?.Invoke(p.UserId, p.UserName);
+    }
 
     /// <summary>
     /// 🎮 Create a new Ludo game
@@ -98,7 +73,7 @@ public sealed class LudoClient
         var result = await _client.CreateRoomAsync(templateName);
         if (result.Success)
         {
-            MySeat = 0; // Creator is always seat 0
+            MySeat = 0;
             await _client.GetStateAsync();
         }
         return result;
@@ -122,10 +97,6 @@ public sealed class LudoClient
     /// </summary>
     public Task LeaveGameAsync() => _client.LeaveRoomAsync();
 
-    // ═══════════════════════════════════════════════════════════════
-    // 🎲 GAME ACTIONS
-    // ═══════════════════════════════════════════════════════════════
-
     /// <summary>
     /// 🎲 Roll the dice!
     /// </summary>
@@ -139,7 +110,6 @@ public sealed class LudoClient
             return new DiceRollResult(false, 0, false, Array.Empty<int>(), result.Error);
         }
 
-        // Parse the new state to get dice value and legal moves
         var state = ParseState(result.NewState);
         if (state == null)
         {
@@ -174,10 +144,6 @@ public sealed class LudoClient
     {
         return await _client.PerformActionAsync("Skip");
     }
-
-    // ═══════════════════════════════════════════════════════════════
-    // 📊 STATE HELPERS
-    // ═══════════════════════════════════════════════════════════════
 
     /// <summary>
     /// 🎯 Get all your token positions
@@ -232,10 +198,6 @@ public sealed class LudoClient
         if (_lastState == null || seatIndex < 0 || seatIndex > 3) return false;
         return (_lastState.ActiveSeatsMask & (1 << seatIndex)) != 0;
     }
-
-    // ═══════════════════════════════════════════════════════════════
-    // 🔧 INTERNAL HELPERS
-    // ═══════════════════════════════════════════════════════════════
 
     private void HandleGameState(GameState state)
     {
@@ -372,10 +334,6 @@ public sealed class LudoClient
         return winners.ToArray();
     }
 }
-
-// ═══════════════════════════════════════════════════════════════
-// 📦 LUDO TYPES
-// ═══════════════════════════════════════════════════════════════
 
 /// <summary>Ludo game state</summary>
 public sealed class LudoState

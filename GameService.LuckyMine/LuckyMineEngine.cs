@@ -15,12 +15,22 @@ public sealed class LuckyMineEngine(
 
     public async Task<GameActionResult> ExecuteAsync(string roomId, GameCommand command)
     {
-        var action = command.Action.AsSpan();
-        if (action.Equals("click", StringComparison.OrdinalIgnoreCase) || action.Equals("Reveal", StringComparison.OrdinalIgnoreCase))
-            return await HandleClickAsync(roomId, command.UserId, command.GetInt("tileIndex"));
-        if (action.Equals("cashout", StringComparison.OrdinalIgnoreCase))
-            return await HandleCashoutAsync(roomId, command.UserId);
-        return GameActionResult.Error($"Unknown action: {command.Action}");
+        if (!await _repository.TryAcquireLockAsync(roomId, TimeSpan.FromSeconds(2)))
+            return GameActionResult.Error("System busy, please try again");
+
+        try
+        {
+            var action = command.Action.AsSpan();
+            if (action.Equals("click", StringComparison.OrdinalIgnoreCase) || action.Equals("Reveal", StringComparison.OrdinalIgnoreCase))
+                return await HandleClickAsync(roomId, command.UserId, command.GetInt("tileIndex"));
+            if (action.Equals("cashout", StringComparison.OrdinalIgnoreCase))
+                return await HandleCashoutAsync(roomId, command.UserId);
+            return GameActionResult.Error($"Unknown action: {command.Action}");
+        }
+        finally
+        {
+            await _repository.ReleaseLockAsync(roomId);
+        }
     }
 
     public async Task<IReadOnlyList<string>> GetLegalActionsAsync(string roomId, string userId)

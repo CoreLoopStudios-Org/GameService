@@ -23,6 +23,8 @@
         <ProjectReference Include="..\GameService.Sdk.Auth\GameService.Sdk.Auth.csproj"/>
         <ProjectReference Include="..\GameService.Sdk.Ludo\GameService.Sdk.Ludo.csproj"/>
         <ProjectReference Include="..\GameService.Sdk.LuckyMine\GameService.Sdk.LuckyMine.csproj"/>
+        <ProjectReference Include="..\GameService.LuckyMine\GameService.LuckyMine.csproj"/>
+        <ProjectReference Include="..\GameService.GameCore\GameService.GameCore.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
