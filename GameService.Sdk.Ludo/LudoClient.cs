@@ -18,15 +18,23 @@ public sealed class LudoClient
 
     public bool IsGameOver => _lastState?.IsGameOver ?? false;
 
+    public bool IsWaitingForPlayers => (_lastState?.ActiveSeatsMask ?? 0) == 0; // Fallback, better to use GameState info
+
+    private int _currentPlayerCount;
+    private int _maxPlayers;
+
+    public bool IsRoomFull => _currentPlayerCount >= _maxPlayers && _maxPlayers > 0;
+
     public event Action<int, int>? OnDiceRolled;
 
     public event Action<int, int, int, int>? OnTokenMoved;
 
     public event Action<int, int>? OnTokenCaptured;
 
-    public event Action<int, int>? OnTokenFinished;
+    public event Action<int>? OnPlayerFinished; // Changed from TokenFinished
 
     public event Action<int>? OnTurnChanged;
+
 
     public event Action<int>? OnTurnTimeout;
 
@@ -149,6 +157,9 @@ public sealed class LudoClient
     {
         if (state.GameType != "Ludo") return;
 
+        _currentPlayerCount = state.PlayerCount;
+        _maxPlayers = state.MaxPlayers;
+
         var ludoState = ParseState(state.GameData);
         if (ludoState == null) return;
 
@@ -175,8 +186,8 @@ public sealed class LudoClient
             case "DiceRolled":
                 if (evt.Data is JsonElement diceData)
                 {
-                    var seat = diceData.GetProperty("seat").GetInt32();
-                    var value = diceData.GetProperty("value").GetInt32();
+                    var seat = GetInt(diceData, "player", "seat");
+                    var value = GetInt(diceData, "value");
                     OnDiceRolled?.Invoke(seat, value);
                 }
                 break;
@@ -184,10 +195,17 @@ public sealed class LudoClient
             case "TokenMoved":
                 if (evt.Data is JsonElement moveData)
                 {
-                    var seat = moveData.GetProperty("seat").GetInt32();
-                    var token = moveData.GetProperty("token").GetInt32();
-                    var from = moveData.GetProperty("from").GetInt32();
-                    var to = moveData.GetProperty("to").GetInt32();
+                    var seat = GetInt(moveData, "player", "seat");
+                    var token = GetInt(moveData, "tokenIndex", "token");
+                    var to = GetInt(moveData, "newPosition", "to");
+                    
+                    var from = -1;
+                    if (_lastState != null)
+                    {
+                        var tokens = GetPlayerTokens(_lastState, seat);
+                        if (token >= 0 && token < tokens.Length) from = tokens[token];
+                    }
+
                     OnTokenMoved?.Invoke(seat, token, from, to);
                 }
                 break;
@@ -195,29 +213,41 @@ public sealed class LudoClient
             case "TokenCaptured":
                 if (evt.Data is JsonElement captureData)
                 {
-                    var seat = captureData.GetProperty("seat").GetInt32();
-                    var token = captureData.GetProperty("token").GetInt32();
+                    var seat = GetInt(captureData, "capturedPlayer", "seat");
+                    var token = GetInt(captureData, "capturedToken", "token");
                     OnTokenCaptured?.Invoke(seat, token);
                 }
                 break;
 
-            case "TokenFinished":
+            case "PlayerFinished":
                 if (evt.Data is JsonElement finishData)
                 {
-                    var seat = finishData.GetProperty("seat").GetInt32();
-                    var token = finishData.GetProperty("token").GetInt32();
-                    OnTokenFinished?.Invoke(seat, token);
+                    var seat = GetInt(finishData, "player", "seat");
+                    OnPlayerFinished?.Invoke(seat);
                 }
                 break;
 
             case "TurnTimeout":
                 if (evt.Data is JsonElement timeoutData)
                 {
-                    var player = timeoutData.GetProperty("player").GetInt32();
+                    var player = GetInt(timeoutData, "player");
                     OnTurnTimeout?.Invoke(player);
                 }
                 break;
         }
+    }
+
+    private static int GetInt(JsonElement el, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (el.TryGetProperty(name, out var prop) || 
+                el.TryGetProperty(char.ToLowerInvariant(name[0]) + name.Substring(1), out prop))
+            {
+                if (prop.ValueKind == JsonValueKind.Number) return prop.GetInt32();
+            }
+        }
+        return 0;
     }
 
     private static LudoState? ParseState(object? data)

@@ -126,6 +126,7 @@ builder.Services.AddSingleton<IStateMigrationRegistry, StateMigrationRegistry>()
 builder.Services.AddSingleton<IGameRepositoryFactory, RedisGameRepositoryFactory>();
 builder.Services.AddSingleton<IGameEventPublisher, RedisGameEventPublisher>();
 builder.Services.AddSingleton<IGameBroadcaster, HubGameBroadcaster>();
+builder.Services.AddSingleton<ITokenRevocationService, RedisTokenRevocationService>();
 
 builder.Services.AddScoped<IPlayerService, PlayerService>();
 builder.Services.AddScoped<IEconomyService, EconomyService>();
@@ -168,6 +169,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 
 app.UseApiKeyAuthentication();
+app.UseTokenRevocation();
 
 app.UseAuthorization();
 

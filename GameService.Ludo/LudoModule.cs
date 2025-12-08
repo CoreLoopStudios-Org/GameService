@@ -28,9 +28,14 @@ public sealed class LudoModule : IGameModule
     {
         var admin = endpoints.MapGroup("/admin/ludo").RequireAuthorization("AdminPolicy");
 
-        admin.MapPost("/{roomId}/roll", async (string roomId, IServiceProvider sp, IGameBroadcaster bc) =>
+        admin.MapPost("/{roomId}/roll", async (string roomId, int? value, IServiceProvider sp, IGameBroadcaster bc) =>
         {
-            var command = new GameCommand(GameCoreConstants.AdminUserId, "roll", default);
+            object? payload = value.HasValue ? new { ForcedValue = value.Value } : null;
+            var jsonPayload = payload != null 
+                ? JsonSerializer.SerializeToElement(payload) 
+                : default;
+
+            var command = new GameCommand(GameCoreConstants.AdminUserId, "roll", jsonPayload);
             var res = await sp.GetRequiredKeyedService<IGameEngine>("Ludo").ExecuteAsync(roomId, command);
 
             if (res.Success) await bc.BroadcastResultAsync(roomId, res);

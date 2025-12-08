@@ -1,4 +1,7 @@
+using System.Security.Claims;
 using GameService.ServiceDefaults.Data;
+using GameService.ServiceDefaults.Security;
+using Microsoft.AspNetCore.Mvc;
 
 namespace GameService.ApiService.Features.Auth;
 
@@ -9,7 +12,17 @@ public static class AuthEndpoints
         var group = app.MapGroup("/auth");
         group.MapIdentityApi<ApplicationUser>();
 
-        group.MapPost("/logout", () => Results.Ok(new { Message = "Logged out successfully" }))
+        group.MapPost("/logout", async (HttpContext ctx, ITokenRevocationService revocationService) =>
+            {
+                var jti = ctx.User.FindFirstValue("jti");
+                if (!string.IsNullOrEmpty(jti))
+                {
+                    // Revoke the specific token ID (JTI)
+                    await revocationService.RevokeTokenAsync(jti);
+                }
+
+                return Results.Ok(new { Message = "Logged out successfully" });
+            })
             .RequireAuthorization()
             .WithName("Logout");
     }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using GameService.GameCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -56,10 +57,20 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
     {
         try
         {
+            // LOAD STATE FIRST to check readiness
+            var ctx = await _repository.LoadAsync(roomId);
+            if (ctx == null) return GameActionResult.Error("Room not found");
+
+            // WAITING ROOM CHECK
+            if (ctx.Meta.PlayerSeats.Count < ctx.Meta.MaxPlayers && command.UserId != GameCoreConstants.AdminUserId)
+            {
+                return GameActionResult.Error($"Waiting for players... ({ctx.Meta.PlayerSeats.Count}/{ctx.Meta.MaxPlayers})");
+            }
+
             var actionSpan = command.Action.AsSpan();
 
             if (actionSpan.Equals(LudoActions.Roll, StringComparison.OrdinalIgnoreCase))
-                return await HandleRollAsync(roomId, command.UserId);
+                return await HandleRollAsync(roomId, command.UserId, command.Payload);
 
             if (actionSpan.StartsWith(LudoActions.Move, StringComparison.OrdinalIgnoreCase))
                 return await HandleMoveAsync(roomId, command.UserId, command.GetInt("tokenIndex"));
@@ -196,14 +207,24 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         return results;
     }
 
-    private async Task<GameActionResult> HandleRollAsync(string roomId, string userId)
+    private async Task<GameActionResult> HandleRollAsync(string roomId, string userId, JsonElement? payload = null)
     {
         var ctx = await _repository.LoadAsync(roomId);
         if (ctx == null) return GameActionResult.Error("Room not found");
         if (!ValidateTurn(ctx, userId, out var seat)) return GameActionResult.Error("Not your turn");
 
         var engine = new LudoEngine(_diceRoller) { State = ctx.State };
-        if (!engine.TryRollDice(out var res)) return GameActionResult.Error($"Roll failed: {res.Status}");
+        
+        byte? forcedDice = null;
+        if (userId == GameCoreConstants.AdminUserId && payload.HasValue)
+        {
+            if (payload.Value.TryGetProperty("ForcedValue", out var prop))
+            {
+                forcedDice = (byte)prop.GetInt32();
+            }
+        }
+
+        if (!engine.TryRollDice(out var res, forcedDice)) return GameActionResult.Error($"Roll failed: {res.Status}");
 
         var events = new List<GameEvent> { new(LudoEvents.DiceRolled, new { Value = res.DiceValue, Player = seat }) };
 

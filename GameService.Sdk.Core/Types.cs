@@ -34,6 +34,22 @@ public sealed record GameEvent(string EventName, object Data, DateTimeOffset Tim
 
 public sealed record ActionError(string Action, string Message);
 
+public sealed record GameTemplateDto(int Id, string Name, string GameType, int MaxPlayers, long EntryFee, string? ConfigJson);
+
+public sealed record CreateRoomFromTemplateRequest(int TemplateId);
+
+public sealed record GameRoomDto(
+    string RoomId, 
+    string GameType, 
+    int CurrentPlayers, 
+    int MaxPlayers, 
+    bool IsPublic, 
+    IReadOnlyDictionary<string, int> PlayerSeats);
+
+public sealed record QuickMatchRequest(string GameType, int MaxPlayers, long EntryFee);
+
+public sealed record QuickMatchResponse(string RoomId, string Action);
+
 internal sealed record CreateRoomResponse(bool Success, string? RoomId, string? ErrorMessage);
 internal sealed record JoinRoomResponse(bool Success, int SeatIndex, string? ErrorMessage);
 internal sealed record SpectateRoomResponse(bool Success, string? ErrorMessage);

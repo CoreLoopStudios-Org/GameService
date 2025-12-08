@@ -1,7 +1,10 @@
 using System.Security.Claims;
+using System.Text.Json;
 using GameService.GameCore;
+using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.DTOs;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace GameService.ApiService.Features.Games;
 
@@ -11,6 +14,16 @@ public static class GameCatalogEndpoints
     {
         app.MapGet("/games/supported", GetSupportedGames)
             .WithName("GetSupportedGames");
+
+        // NEW: Allow players to see available templates
+        app.MapGet("/games/templates", GetPublicTemplates)
+            .RequireAuthorization() 
+            .WithName("GetPublicTemplates");
+
+        // NEW: Allow users to create a room from a template
+        app.MapPost("/games/rooms", CreateRoomFromTemplate)
+            .RequireAuthorization()
+            .WithName("CreateRoomFromTemplate");
 
         app.MapGet("/games/lobby", GetPublicLobby)
             .RequireAuthorization()
@@ -28,6 +41,63 @@ public static class GameCatalogEndpoints
     {
         var games = modules.Select(m => new SupportedGameDto(m.GameName)).ToList();
         return Results.Ok(games);
+    }
+
+    private static async Task<IResult> GetPublicTemplates(GameDbContext db)
+    {
+        var templates = await db.RoomTemplates
+            .AsNoTracking()
+            .Select(t => new GameTemplateDto(t.Id, t.Name, t.GameType, t.MaxPlayers, t.EntryFee, null)) // Hide ConfigJson from public
+            .ToListAsync();
+        
+        return Results.Ok(templates);
+    }
+
+    // ... (Keep existing GetPublicLobby and QuickMatch methods) ...
+    private static async Task<IResult> CreateRoomFromTemplate(
+        [FromBody] CreateRoomFromTemplateRequest req,
+        GameDbContext db,
+        IServiceProvider sp,
+        IRoomRegistry registry,
+        HttpContext ctx)
+    {
+        var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
+
+        var template = await db.RoomTemplates.AsNoTracking().FirstOrDefaultAsync(t => t.Id == req.TemplateId);
+        if (template == null) return Results.NotFound("Template not found");
+
+        var roomService = sp.GetKeyedService<IGameRoomService>(template.GameType);
+        if (roomService == null) return Results.BadRequest("Game type not supported");
+
+        // Parse config
+        var configDict = new Dictionary<string, string>();
+        if (!string.IsNullOrEmpty(template.ConfigJson))
+        {
+            try {
+                var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(template.ConfigJson);
+                if (dict != null) foreach (var kvp in dict) configDict[kvp.Key] = kvp.Value?.ToString() ?? "";
+            } catch { /* Ignore config errors for now */ }
+        }
+
+        var meta = new GameRoomMeta
+        {
+            GameType = template.GameType,
+            MaxPlayers = template.MaxPlayers,
+            EntryFee = template.EntryFee,
+            Config = configDict,
+            IsPublic = true,
+            // Initialize with the creator in seat 0
+            PlayerSeats = new Dictionary<string, int> { [userId] = 0 } 
+        };
+
+        // Create the room
+        var roomId = await roomService.CreateRoomAsync(meta);
+        
+        // Register user location
+        await registry.SetUserRoomAsync(userId, roomId);
+
+        return Results.Ok(new { RoomId = roomId, GameType = template.GameType });
     }
 
     private static async Task<IResult> GetPublicLobby(
@@ -82,6 +152,7 @@ public static class GameCatalogEndpoints
         {
             var states = await engine.GetManyStatesAsync(roomIds.ToList());
 
+            // Simple matchmaking: First available room
             var bestMatch = states.FirstOrDefault(s =>
                 s.Meta.IsPublic &&
                 s.Meta.CurrentPlayerCount < s.Meta.MaxPlayers);
@@ -107,6 +178,7 @@ public static class GameCatalogEndpoints
 
         var newRoomId = await roomService.CreateRoomAsync(meta);
 
+        // Pre-register user location so SignalR connects to correct node/room if scaled out
         await registry.SetUserRoomAsync(userId, newRoomId);
 
         return Results.Ok(new QuickMatchResponse(newRoomId, "Created"));
