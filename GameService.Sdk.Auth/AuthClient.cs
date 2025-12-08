@@ -112,6 +112,58 @@ public sealed class AuthClient : IDisposable
         return profile?.Coins;
     }
 
+    public async Task<ClaimResult> ClaimDailyLoginAsync(string accessToken)
+    {
+        return await ClaimRewardAsync(accessToken, "/game/daily-login");
+    }
+
+    public async Task<ClaimResult> ClaimDailySpinAsync(string accessToken)
+    {
+        return await ClaimRewardAsync(accessToken, "/game/daily-spin");
+    }
+
+    private async Task<ClaimResult> ClaimRewardAsync(string accessToken, string endpoint)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, _baseUrl + endpoint);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        var response = await _http.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return new ClaimResult(false, ParseError(body), 0, 0);
+        }
+
+        try 
+        {
+            var data = JsonSerializer.Deserialize<JsonElement>(body, _jsonOptions);
+            long reward = 0;
+            long newBalance = 0;
+            
+            if (data.TryGetProperty("reward", out var r)) reward = r.GetInt64();
+            if (data.TryGetProperty("newBalance", out var nb)) newBalance = nb.GetInt64();
+            
+            return new ClaimResult(true, null, reward, newBalance);
+        }
+        catch
+        {
+            return new ClaimResult(false, "Failed to parse response", 0, 0);
+        }
+    }
+
+    public async Task<PagedResult<WalletTransactionDto>?> GetTransactionHistoryAsync(string accessToken, int page = 1, int pageSize = 20)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/game/coins/history?page={page}&pageSize={pageSize}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        var response = await _http.SendAsync(request);
+        if (!response.IsSuccessStatusCode) return null;
+
+        var body = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<PagedResult<WalletTransactionDto>>(body, _jsonOptions);
+    }
+
     private static string ParseError(string body)
     {
         try
@@ -195,6 +247,12 @@ public sealed class GameSession
     public Task<PlayerProfile?> GetProfileAsync() => _authClient.GetProfileAsync(AccessToken);
 
     public Task<long?> GetBalanceAsync() => _authClient.GetBalanceAsync(AccessToken);
+
+    public Task<ClaimResult> ClaimDailyLoginAsync() => _authClient.ClaimDailyLoginAsync(AccessToken);
+
+    public Task<ClaimResult> ClaimDailySpinAsync() => _authClient.ClaimDailySpinAsync(AccessToken);
+
+    public Task<PagedResult<WalletTransactionDto>?> GetTransactionHistoryAsync(int page = 1, int pageSize = 20) => _authClient.GetTransactionHistoryAsync(AccessToken, page, pageSize);
 }
 
 public sealed record RegisterResult(bool Success, string? Error);

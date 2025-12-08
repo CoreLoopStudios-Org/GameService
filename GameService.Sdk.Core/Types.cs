@@ -80,3 +80,20 @@ internal sealed record PlayerReconnectedPayload(string UserId, string UserName);
 internal sealed record ChatMessagePayload(string UserId, string UserName, string Message, DateTimeOffset Timestamp);
 internal sealed record GameEventPayload(string EventName, object Data, DateTimeOffset Timestamp);
 internal sealed record ActionErrorPayload(string Action, string ErrorMessage);
+
+public sealed record WalletTransactionDto(
+    long Id,
+    long Amount,
+    long BalanceAfter,
+    string TransactionType,
+    string Description,
+    string ReferenceId,
+    DateTimeOffset CreatedAt);
+
+public sealed record PagedResult<T>(
+    List<T> Items,
+    int TotalCount,
+    int Page,
+    int PageSize);
+
+public sealed record ClaimResult(bool Success, string? Error, long Reward, long NewBalance);

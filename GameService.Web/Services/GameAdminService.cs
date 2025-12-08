@@ -1,11 +1,23 @@
 using System.Text.Json;
 using GameService.GameCore;
+using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.DTOs;
 
 namespace GameService.Web.Services;
 
 public class GameAdminService(HttpClient http)
 {
+    public async Task<List<GlobalSetting>> GetSettingsAsync()
+    {
+        return await http.GetFromJsonAsync<List<GlobalSetting>>("/admin/settings") ?? [];
+    }
+
+    public async Task UpdateSettingAsync(string key, string value, string? description = null)
+    {
+        var response = await http.PutAsJsonAsync("/admin/settings", new { Key = key, Value = value, Description = description });
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task<DashboardStatsDto?> GetDashboardStatsAsync()
     {
         try

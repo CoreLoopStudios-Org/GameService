@@ -63,6 +63,17 @@ public class Program
 
         Console.Write("Connecting to Game Gateway... ");
         _gameClient = await _session.ConnectToGameAsync();
+        
+        _gameClient.OnChatMessage += msg =>
+        {
+            if (msg.UserId == "SYSTEM")
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"\n\n[BROADCAST] {msg.Message}\n");
+                Console.ResetColor();
+            }
+        };
+        
         Console.WriteLine("Connected via SignalR.");
         
         // Initial balance check
@@ -81,7 +92,10 @@ public class Program
             Console.WriteLine("1. Play Ludo");
             Console.WriteLine("2. Play LuckyMine");
             Console.WriteLine("3. Check Wallet");
-            Console.WriteLine("4. Exit");
+            Console.WriteLine("4. Daily Login Reward");
+            Console.WriteLine("5. Daily Spin");
+            Console.WriteLine("6. Transaction History");
+            Console.WriteLine("7. Exit");
             Console.Write("\nSelect option: ");
 
             var input = Console.ReadLine();
@@ -98,12 +112,84 @@ public class Program
                     Console.WriteLine($"Current Balance: {bal:N0} coins");
                     break;
                 case "4":
+                    await ClaimDailyLoginAsync();
+                    break;
+                case "5":
+                    await ClaimDailySpinAsync();
+                    break;
+                case "6":
+                    await ShowHistoryAsync();
+                    break;
+                case "7":
                     return;
                 default:
                     Console.WriteLine("Invalid option.");
                     break;
             }
         }
+    }
+
+    private static async Task ClaimDailyLoginAsync()
+    {
+        Console.Write("Claiming daily login reward... ");
+        var result = await _session.ClaimDailyLoginAsync();
+        if (result.Success)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"Success! Received {result.Reward} coins. New Balance: {result.NewBalance}");
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Failed: {result.Error}");
+        }
+        Console.ResetColor();
+    }
+
+    private static async Task ClaimDailySpinAsync()
+    {
+        Console.Write("Spinning the wheel... ");
+        var result = await _session.ClaimDailySpinAsync();
+        if (result.Success)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"Success! You won {result.Reward} coins! New Balance: {result.NewBalance}");
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Failed: {result.Error}");
+        }
+        Console.ResetColor();
+    }
+
+    private static async Task ShowHistoryAsync()
+    {
+        Console.WriteLine("Fetching transaction history...");
+        var result = await _session.GetTransactionHistoryAsync();
+        if (result == null || result.Items.Count == 0)
+        {
+            Console.WriteLine("No transactions found.");
+            return;
+        }
+
+        Console.WriteLine($"Found {result.TotalCount} transactions (showing top {result.Items.Count}):");
+        Console.WriteLine("--------------------------------------------------------------------------------");
+        Console.WriteLine($"{"Time",-20} | {"Type",-15} | {"Amount",10} | {"Balance",10} | {"Desc"}");
+        Console.WriteLine("--------------------------------------------------------------------------------");
+        
+        foreach (var tx in result.Items)
+        {
+            var amountStr = (tx.Amount > 0 ? "+" : "") + tx.Amount;
+            var color = tx.Amount > 0 ? ConsoleColor.Green : ConsoleColor.Red;
+            
+            Console.Write($"{tx.CreatedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss} | {tx.TransactionType,-15} | ");
+            Console.ForegroundColor = color;
+            Console.Write($"{amountStr,10}");
+            Console.ResetColor();
+            Console.WriteLine($" | {tx.BalanceAfter,10:N0} | {tx.Description}");
+        }
+        Console.WriteLine("--------------------------------------------------------------------------------");
     }
 
     // ==========================================

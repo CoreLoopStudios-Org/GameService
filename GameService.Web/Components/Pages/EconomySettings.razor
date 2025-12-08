@@ -1,0 +1,239 @@
+@page "/economy-settings"
+@using GameService.ServiceDefaults.Data
+@using System.Text.Json
+@attribute [Authorize]
+@rendermode InteractiveServer
+@inject GameAdminService AdminService
+@inject ToastService Toast
+@inject ILogger<EconomySettings> Logger
+
+<PageTitle>Economy Settings</PageTitle>
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-0 fw-bold">Economy Settings</h1>
+            <p class="text-muted small mb-0">Manage daily rewards and spin configurations</p>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary"></div>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+            <!-- Daily Login Settings -->
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white py-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-calendar-check text-primary fs-4"></i>
+                            <h5 class="mb-0 fw-bold">Daily Login Reward</h5>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-4">
+                            <input class="form-check-input" type="checkbox" id="dailyLoginEnabled" 
+                                   checked="@dailyLoginEnabled" 
+                                   @onchange="@(e => UpdateBoolSetting("Economy:DailyLoginEnabled", (bool)e.Value!))">
+                            <label class="form-check-label fw-medium" for="dailyLoginEnabled">Enable Daily Login Rewards</label>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="dailyLoginReward" class="form-label">Reward Amount (Coins)</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-coin"></i></span>
+                                <input type="number" class="form-control" id="dailyLoginReward" 
+                                       value="@dailyLoginReward" 
+                                       @onchange="@(e => UpdateLongSetting("Economy:DailyLoginReward", e.Value?.ToString()))">
+                            </div>
+                            <div class="form-text">Coins awarded to players once every 24 hours.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Daily Spin Settings -->
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white py-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-arrow-repeat text-success fs-4"></i>
+                            <h5 class="mb-0 fw-bold">Daily Spin Wheel</h5>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-4">
+                            <input class="form-check-input" type="checkbox" id="dailySpinEnabled" 
+                                   checked="@dailySpinEnabled" 
+                                   @onchange="@(e => UpdateBoolSetting("Economy:DailySpinEnabled", (bool)e.Value!))">
+                            <label class="form-check-label fw-medium" for="dailySpinEnabled">Enable Daily Spin</label>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="spinRewardsJson" class="form-label">Rewards Configuration (JSON)</label>
+                            <textarea class="form-control font-monospace small" id="spinRewardsJson" rows="10"
+                                      @bind="dailySpinRewardsJson" 
+                                      @bind:event="oninput"></textarea>
+                            <div class="form-text">
+                                Format: <code>[{"Amount": 100, "Weight": 50}, {"Amount": 500, "Weight": 10}]</code>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-end">
+                            <button class="btn btn-primary" @onclick="SaveSpinRewards" disabled="@(!IsJsonValid)">
+                                <i class="bi bi-save me-2"></i>Save Spin Config
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private List<GlobalSetting> settings = new();
+
+    private bool dailyLoginEnabled;
+    private long dailyLoginReward;
+    
+    private bool dailySpinEnabled;
+    private string dailySpinRewardsJson = "[]";
+
+    private bool IsJsonValid
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(dailySpinRewardsJson)) return false;
+            try
+            {
+                JsonDocument.Parse(dailySpinRewardsJson);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSettings();
+    }
+
+    private async Task LoadSettings()
+    {
+        try
+        {
+            isLoading = true;
+            settings = await AdminService.GetSettingsAsync();
+            
+            dailyLoginEnabled = GetBool("Economy:DailyLoginEnabled");
+            dailyLoginReward = GetLong("Economy:DailyLoginReward", 100);
+            
+            dailySpinEnabled = GetBool("Economy:DailySpinEnabled");
+            dailySpinRewardsJson = GetString("Economy:DailySpinRewards", "[]");
+            
+            // Format JSON nicely if possible
+            try 
+            {
+                var parsed = JsonDocument.Parse(dailySpinRewardsJson);
+                dailySpinRewardsJson = JsonSerializer.Serialize(parsed, new JsonSerializerOptions { WriteIndented = true });
+            }
+            catch { /* ignore */ }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load settings");
+            Toast.ShowError("Failed to load settings");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetString(string key, string defaultValue)
+    {
+        return settings.FirstOrDefault(s => s.Key == key)?.Value ?? defaultValue;
+    }
+
+    private bool GetBool(string key)
+    {
+        var val = GetString(key, "false");
+        return val.Equals("true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private long GetLong(string key, long defaultValue)
+    {
+        var val = GetString(key, defaultValue.ToString());
+        return long.TryParse(val, out var res) ? res : defaultValue;
+    }
+
+    private async Task UpdateBoolSetting(string key, bool value)
+    {
+        await UpdateSetting(key, value ? "true" : "false");
+        if (key == "Economy:DailyLoginEnabled") dailyLoginEnabled = value;
+        if (key == "Economy:DailySpinEnabled") dailySpinEnabled = value;
+    }
+
+    private async Task UpdateLongSetting(string key, string? value)
+    {
+        if (long.TryParse(value, out var res))
+        {
+            await UpdateSetting(key, res.ToString());
+            if (key == "Economy:DailyLoginReward") dailyLoginReward = res;
+        }
+    }
+
+    private async Task SaveSpinRewards()
+    {
+        if (!IsJsonValid) return;
+        
+        // Minify JSON before saving
+        try
+        {
+            using var doc = JsonDocument.Parse(dailySpinRewardsJson);
+            var minified = JsonSerializer.Serialize(doc.RootElement);
+            await UpdateSetting("Economy:DailySpinRewards", minified);
+            dailySpinRewardsJson = JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save spin rewards");
+            Toast.ShowError("Invalid JSON format");
+        }
+    }
+
+    private async Task UpdateSetting(string key, string value)
+    {
+        try
+        {
+            await AdminService.UpdateSettingAsync(key, value);
+            Toast.ShowSuccess("Setting updated");
+            
+            // Update local cache
+            var existing = settings.FirstOrDefault(s => s.Key == key);
+            if (existing != null)
+            {
+                existing.Value = value;
+            }
+            else
+            {
+                settings.Add(new GlobalSetting { Key = key, Value = value });
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to update setting {Key}", key);
+            Toast.ShowError("Failed to update setting");
+        }
+    }
+}
