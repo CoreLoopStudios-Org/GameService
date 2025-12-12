@@ -30,15 +30,143 @@ public static class AdminEndpoints
         group.MapPost("/games/create-from-template", CreateGameFromTemplate);
         group.MapGet("/games", GetGames);
         group.MapGet("/games/{roomId}", GetGameState);
+        group.MapGet("/games/{roomId}/players", GetGamePlayers);
         group.MapDelete("/games/{roomId}", DeleteGame);
 
         group.MapGet("/players", GetPlayers);
         group.MapGet("/players/{userId}/history", GetPlayerHistory);
         group.MapPost("/players/{userId}/coins", UpdatePlayerCoins);
+        group.MapPut("/players/{userId}/profile", UpdatePlayerProfile);
         group.MapDelete("/players/{userId}", DeletePlayer);
+
+        group.MapGet("/analytics/daily-login", GetDailyLoginAnalytics);
+        group.MapGet("/analytics/daily-spin", GetDailySpinAnalytics);
 
         group.MapGet("/settings", GetSettings);
         group.MapPut("/settings", UpdateSetting);
+    }
+
+    private static async Task<IResult> GetGamePlayers(
+        string roomId,
+        IServiceProvider sp,
+        IRoomRegistry registry,
+        GameDbContext db)
+    {
+        if (!InputValidator.IsValidRoomId(roomId))
+            return Results.BadRequest("Invalid room ID format");
+
+        var gameType = await registry.GetGameTypeAsync(roomId);
+        if (gameType == null) return Results.NotFound("Room not found");
+
+        var engine = sp.GetKeyedService<IGameEngine>(gameType);
+        if (engine == null) return Results.NotFound("Game engine not available");
+
+        var state = await engine.GetStateAsync(roomId);
+        if (state == null) return Results.NotFound("Game state not found");
+
+        var playerIds = state.Meta.PlayerSeats.Keys.ToList();
+        var users = await db.Users
+            .AsNoTracking()
+            .Where(u => playerIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.UserName);
+
+        var players = state.Meta.PlayerSeats.Select(kvp => new GamePlayerDto(
+            kvp.Key,
+            users.TryGetValue(kvp.Key, out var name) ? name ?? "Unknown" : "Unknown",
+            kvp.Value,
+            false // Bots not yet distinguished in seats, assuming human for now
+        )).ToList();
+
+        return Results.Ok(players);
+    }
+
+    private static async Task<IResult> UpdatePlayerProfile(
+        string userId,
+        [FromBody] AdminUpdateProfileRequest req,
+        GameDbContext db,
+        UserManager<ApplicationUser> userManager,
+        IGameEventPublisher publisher,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("AdminEndpoints");
+        
+        var user = await db.Users.Include(u => u.Profile).FirstOrDefaultAsync(u => u.Id == userId);
+        if (user == null) return Results.NotFound();
+
+        bool changed = false;
+
+        if (!string.IsNullOrWhiteSpace(req.DisplayName) && user.UserName != req.DisplayName)
+        {
+            user.UserName = req.DisplayName;
+            user.NormalizedUserName = userManager.KeyNormalizer.NormalizeName(req.DisplayName);
+            changed = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(req.Email) && user.Email != req.Email)
+        {
+            user.Email = req.Email;
+            user.NormalizedEmail = userManager.KeyNormalizer.NormalizeEmail(req.Email);
+            changed = true;
+        }
+
+        if (req.AvatarId.HasValue && user.Profile != null && user.Profile.AvatarId != req.AvatarId)
+        {
+            user.Profile.AvatarId = req.AvatarId.Value;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            await db.SaveChangesAsync();
+            logger.LogInformation("Admin updated profile for {UserId}", userId);
+            
+            if (user.Profile != null)
+            {
+                await publisher.PublishPlayerUpdatedAsync(new PlayerUpdatedMessage(
+                    user.Id, 
+                    user.Profile.Coins, 
+                    user.UserName, 
+                    user.Email));
+            }
+        }
+
+        return Results.Ok(new { Message = "Profile updated" });
+    }
+
+    private static async Task<IResult> GetDailyLoginAnalytics(GameDbContext db)
+    {
+        var data = await db.PlayerProfiles
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted && p.DailyLoginStreak > 0)
+            .GroupBy(p => p.DailyLoginStreak)
+            .Select(g => new { Streak = g.Key, Count = g.Count(), SampleIds = g.Take(5).Select(p => p.UserId).ToList() })
+            .OrderBy(x => x.Streak)
+            .ToListAsync();
+
+        var result = data.Select(x => new DailyLoginAnalyticsDto(x.Streak, x.Count, x.SampleIds)).ToList();
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> GetDailySpinAnalytics(GameDbContext db)
+    {
+        var totalSpins = await db.WalletTransactions.CountAsync(t => t.TransactionType == "DAILY_SPIN");
+        if (totalSpins == 0) return Results.Ok(new List<DailySpinAnalyticsDto>());
+
+        var data = await db.WalletTransactions
+            .AsNoTracking()
+            .Where(t => t.TransactionType == "DAILY_SPIN")
+            .GroupBy(t => t.Amount)
+            .Select(g => new { Amount = g.Key, Count = g.Count() })
+            .OrderBy(x => x.Amount)
+            .ToListAsync();
+
+        var result = data.Select(x => new DailySpinAnalyticsDto(
+            x.Amount, 
+            x.Count, 
+            Math.Round((double)x.Count / totalSpins * 100, 2)
+        )).ToList();
+
+        return Results.Ok(result);
     }
 
     private static async Task<IResult> GetSettings(GameDbContext db)

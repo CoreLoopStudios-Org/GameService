@@ -1332,6 +1332,64 @@ Authorization: Bearer {{user_token}}
 %}
 
 ###
+# @name ConfigureDailyLoginArray
+# 12.8 Admin: Configure Daily Login Array
+PUT {{host}}/admin/settings
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "key": "Economy:DailyLoginRewards",
+  "value": "[100, 200, 500]",
+  "description": "Day 1: 100, Day 2: 200, Day 3: 500 (Loops)"
+}
+
+###
+# @name GetDailyLoginAnalytics
+# 12.9 Admin: Get Daily Login Analytics
+GET {{host}}/admin/analytics/daily-login
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("Login Analytics Retrieved", function () {
+        client.assert(response.status === 200, "Should return analytics");
+        client.assert(Array.isArray(response.body), "Should be array");
+    });
+%}
+
+###
+# @name GetDailySpinAnalytics
+# 12.10 Admin: Get Daily Spin Analytics
+GET {{host}}/admin/analytics/daily-spin
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("Spin Analytics Retrieved", function () {
+        client.assert(response.status === 200, "Should return analytics");
+        client.assert(Array.isArray(response.body), "Should be array");
+    });
+%}
+
+###
+# @name AdminUpdateProfile
+# 12.11 Admin: Update User Profile
+PUT {{host}}/admin/players/{{user_id}}/profile
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "displayName": "AdminEditedName",
+  "avatarId": 99,
+  "email": "edited@test.local"
+}
+
+> {%
+    client.test("Profile Updated by Admin", function () {
+        client.assert(response.status === 200, "Should succeed");
+    });
+%}
+
+###
 # ==========================================
 # 13. CLEANUP
 # ==========================================

@@ -137,22 +137,51 @@ public static class EconomyEndpoints
         if (!settings.TryGetValue("Economy:DailyLoginEnabled", out var enabled) || enabled != "true")
             return Results.BadRequest("Daily login rewards are disabled.");
 
-        if (!settings.TryGetValue("Economy:DailyLoginReward", out var amountStr) || !long.TryParse(amountStr, out var amount))
-            amount = 100; // Default
-
         var profile = await db.PlayerProfiles.FirstOrDefaultAsync(p => p.UserId == userId);
         if (profile == null) return Results.NotFound("Profile not found");
 
-        if (profile.LastDailyLogin.HasValue && profile.LastDailyLogin.Value.Date == DateTimeOffset.UtcNow.Date)
+        var now = DateTimeOffset.UtcNow;
+        if (profile.LastDailyLogin.HasValue && profile.LastDailyLogin.Value.Date == now.Date)
             return Results.BadRequest("Already claimed today.");
 
-        var result = await economy.ProcessTransactionAsync(userId, amount, "DAILY_LOGIN", $"LOGIN:{DateTimeOffset.UtcNow:yyyyMMdd}");
+        // Calculate Streak
+        if (profile.LastDailyLogin.HasValue && profile.LastDailyLogin.Value.Date == now.AddDays(-1).Date)
+        {
+            profile.DailyLoginStreak++;
+        }
+        else
+        {
+            profile.DailyLoginStreak = 1;
+        }
+
+        // Determine Reward
+        long amount = 100; // Default
+        if (settings.TryGetValue("Economy:DailyLoginRewards", out var json))
+        {
+            try
+            {
+                var rewards = JsonSerializer.Deserialize<List<long>>(json);
+                if (rewards != null && rewards.Count > 0)
+                {
+                    // 0-indexed day, looping
+                    var dayIndex = (profile.DailyLoginStreak - 1) % rewards.Count;
+                    amount = rewards[dayIndex];
+                }
+            }
+            catch { /* Fallback to default */ }
+        }
+        else if (settings.TryGetValue("Economy:DailyLoginReward", out var amountStr) && long.TryParse(amountStr, out var parsed))
+        {
+            amount = parsed;
+        }
+
+        var result = await economy.ProcessTransactionAsync(userId, amount, "DAILY_LOGIN", $"LOGIN:{now:yyyyMMdd}");
         if (!result.Success) return Results.BadRequest(result.ErrorMessage);
 
-        profile.LastDailyLogin = DateTimeOffset.UtcNow;
+        profile.LastDailyLogin = now;
         await db.SaveChangesAsync();
 
-        return Results.Ok(new { Reward = amount, NewBalance = result.NewBalance });
+        return Results.Ok(new { Reward = amount, NewBalance = result.NewBalance, Streak = profile.DailyLoginStreak });
     }
 
     private static async Task<IResult> ClaimDailySpin(

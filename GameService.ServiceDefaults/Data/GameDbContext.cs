@@ -220,6 +220,7 @@ public class PlayerProfile
     public DateTimeOffset? DeletedAt { get; set; }
 
     public DateTimeOffset? LastDailyLogin { get; set; }
+    public int DailyLoginStreak { get; set; }
     public DateTimeOffset? LastDailySpin { get; set; }
     public int? AvatarId { get; set; }
 }

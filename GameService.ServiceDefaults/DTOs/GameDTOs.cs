@@ -62,3 +62,8 @@ public record DashboardStatsDto(
 );
 
 public record BroadcastRequest(string Message, string Type = "Info");
+
+public record DailyLoginAnalyticsDto(int StreakDays, int PlayerCount, List<string> SampleUserIds);
+public record DailySpinAnalyticsDto(long RewardAmount, int Count, double Percentage);
+public record GamePlayerDto(string UserId, string UserName, int SeatNumber, bool IsBot);
+public record AdminUpdateProfileRequest(string? DisplayName, int? AvatarId, string? Email);
