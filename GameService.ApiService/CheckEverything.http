@@ -927,6 +927,19 @@ Content-Type: {{contentType}}
 }
 
 ###
+# @name VerifyAdminCoins_User2
+# 8.5.1 Verify coins were added to user2
+GET {{host}}/game/me
+Authorization: Bearer {{user2_token}}
+
+> {%
+    client.test("Admin Coins Received User2", function () {
+        client.assert(response.status === 200, "Profile should be retrieved");
+        client.assert(response.body.coins > 0, "Should have coins");
+    });
+%}
+
+###
 # @name VerifyAdminCoins
 # 8.6 Verify coins were added
 GET {{host}}/game/me
@@ -1161,9 +1174,7 @@ Authorization: Bearer {{user_token}}
 Content-Type: {{contentType}}
 
 {
-  "gameType": "Ludo",
-  "maxPlayers": 2,
-  "entryFee": 0
+  "templateId": {{ludo_template_id}}
 }
 
 > {%
@@ -1185,9 +1196,7 @@ Authorization: Bearer {{user2_token}}
 Content-Type: {{contentType}}
 
 {
-  "gameType": "Ludo",
-  "maxPlayers": 2,
-  "entryFee": 0
+  "templateId": {{ludo_template_id}}
 }
 
 > {%

@@ -221,6 +221,7 @@ public class PlayerProfile
 
     public DateTimeOffset? LastDailyLogin { get; set; }
     public DateTimeOffset? LastDailySpin { get; set; }
+    public int? AvatarId { get; set; }
 }
 
 public class GlobalSetting

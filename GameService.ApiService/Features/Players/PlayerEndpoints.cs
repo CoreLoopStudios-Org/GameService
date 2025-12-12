@@ -39,11 +39,17 @@ public static class PlayerEndpoints
             !InputValidator.IsValidTemplateName(req.DisplayName))
             return Results.BadRequest("Invalid display name format.");
 
-        var user = await db.Users.FindAsync(userId);
+        var user = await db.Users
+            .Include(u => u.Profile)
+            .FirstOrDefaultAsync(u => u.Id == userId);
+
         if (user == null) return Results.NotFound();
 
         if (!string.IsNullOrWhiteSpace(req.DisplayName))
             user.UserName = req.DisplayName;
+
+        if (req.AvatarId.HasValue && user.Profile != null)
+            user.Profile.AvatarId = req.AvatarId.Value;
 
         await db.SaveChangesAsync();
 

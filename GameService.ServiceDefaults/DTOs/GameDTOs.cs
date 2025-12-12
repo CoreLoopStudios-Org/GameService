@@ -48,7 +48,7 @@ public record WalletTransactionDto(
 
 public record UpdateProfileRequest(string? DisplayName, int? AvatarId);
 
-public record QuickMatchRequest(string GameType, int MaxPlayers = 4, long EntryFee = 0);
+public record QuickMatchRequest(string GameType, int MaxPlayers = 4, long EntryFee = 0, int? TemplateId = null);
 
 public record QuickMatchResponse(string RoomId, string Action);
 

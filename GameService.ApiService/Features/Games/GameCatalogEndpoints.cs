@@ -143,22 +143,51 @@ public static class GameCatalogEndpoints
         [FromBody] QuickMatchRequest req,
         IRoomRegistry registry,
         IServiceProvider sp,
-        HttpContext ctx)
+        HttpContext ctx,
+        GameDbContext db)
     {
         var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
 
-        var (roomIds, _) = await registry.GetRoomIdsPagedAsync(req.GameType, 0, 50);
-        var engine = sp.GetKeyedService<IGameEngine>(req.GameType);
+        // Resolve parameters from Template if provided
+        string targetGameType = req.GameType;
+        int targetMaxPlayers = req.MaxPlayers;
+        long targetEntryFee = req.EntryFee;
+        Dictionary<string, string> targetConfig = new();
+
+        if (req.TemplateId.HasValue)
+        {
+            var template = await db.RoomTemplates.AsNoTracking().FirstOrDefaultAsync(t => t.Id == req.TemplateId.Value);
+            if (template == null) return Results.NotFound("Template not found");
+
+            targetGameType = template.GameType;
+            targetMaxPlayers = template.MaxPlayers;
+            targetEntryFee = template.EntryFee;
+
+            if (!string.IsNullOrEmpty(template.ConfigJson))
+            {
+                try
+                {
+                    var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(template.ConfigJson);
+                    if (dict != null) foreach (var kvp in dict) targetConfig[kvp.Key] = kvp.Value?.ToString() ?? "";
+                }
+                catch { /* Ignore config errors */ }
+            }
+        }
+
+        var (roomIds, _) = await registry.GetRoomIdsPagedAsync(targetGameType, 0, 50);
+        var engine = sp.GetKeyedService<IGameEngine>(targetGameType);
 
         if (engine != null && roomIds.Count > 0)
         {
             var states = await engine.GetManyStatesAsync(roomIds.ToList());
 
-            // Simple matchmaking: First available room
+            // Matchmaking: Respect criteria
             var bestMatch = states.FirstOrDefault(s =>
                 s.Meta.IsPublic &&
-                s.Meta.CurrentPlayerCount < s.Meta.MaxPlayers);
+                s.Meta.CurrentPlayerCount < s.Meta.MaxPlayers &&
+                s.Meta.MaxPlayers == targetMaxPlayers &&
+                s.Meta.EntryFee == targetEntryFee);
 
             if (bestMatch != null)
             {
@@ -166,17 +195,17 @@ public static class GameCatalogEndpoints
             }
         }
 
-        var roomService = sp.GetKeyedService<IGameRoomService>(req.GameType);
+        var roomService = sp.GetKeyedService<IGameRoomService>(targetGameType);
         if (roomService == null)
             return Results.BadRequest("Unsupported game type");
 
         var meta = new GameRoomMeta
         {
-            GameType = req.GameType,
-            MaxPlayers = req.MaxPlayers,
-            EntryFee = req.EntryFee,
+            GameType = targetGameType,
+            MaxPlayers = targetMaxPlayers,
+            EntryFee = targetEntryFee,
             IsPublic = true,
-            Config = new Dictionary<string, string>()
+            Config = targetConfig
         };
 
         var newRoomId = await roomService.CreateRoomAsync(meta);
