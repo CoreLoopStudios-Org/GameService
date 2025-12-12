@@ -1229,12 +1229,116 @@ Authorization: Bearer {{admin_token}}
 
 ###
 # ==========================================
-# 11. CLEANUP
+# 12. MISSING ENDPOINT COVERAGE
+# ==========================================
+
+###
+# @name GetPublicTemplates
+# 12.1 List public templates
+GET {{host}}/games/templates
+Authorization: Bearer {{user_token}}
+
+> {%
+    client.test("Public Templates Retrieved", function () {
+        client.assert(response.status === 200, "Should return templates");
+        client.assert(Array.isArray(response.body), "Should return array");
+    });
+%}
+
+###
+# @name EnableDailyRewards
+# 12.2 Admin: Enable daily rewards
+PUT {{host}}/admin/settings
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "key": "Economy:DailyLoginEnabled",
+  "value": "true",
+  "description": "Enable daily login rewards"
+}
+
+###
+# @name EnableDailySpin
+# 12.3 Admin: Enable daily spin
+PUT {{host}}/admin/settings
+Authorization: Bearer {{admin_token}}
+Content-Type: {{contentType}}
+
+{
+  "key": "Economy:DailySpinEnabled",
+  "value": "true",
+  "description": "Enable daily spin"
+}
+
+###
+# @name ClaimDailyLogin
+# 12.4 Claim Daily Login Reward
+POST {{host}}/game/daily-login
+Authorization: Bearer {{user_token}}
+
+> {%
+    client.test("Daily Login Claimed", function () {
+        client.assert(response.status === 200, "Should claim reward");
+        client.assert(response.body.reward !== undefined, "Should return reward amount");
+    });
+%}
+
+###
+# @name ClaimDailySpin
+# 12.5 Claim Daily Spin
+POST {{host}}/game/daily-spin
+Authorization: Bearer {{user_token}}
+
+> {%
+    client.test("Daily Spin Claimed", function () {
+        client.assert(response.status === 200, "Should claim spin");
+        client.assert(response.body.reward !== undefined, "Should return reward amount");
+    });
+%}
+
+###
+# @name PaymentWebhook
+# 12.6 External Payment Webhook
+POST {{host}}/game/public/coins/credit
+Content-Type: {{contentType}}
+X-Payment-Signature: test-signature-123
+
+{
+  "userId": "{{user_id}}",
+  "amount": 500,
+  "referenceId": "ext_payment_{{$randomInt}}",
+  "idempotencyKey": "pay_key_{{$randomInt}}"
+}
+
+> {%
+    client.test("Payment Webhook Success", function () {
+        client.assert(response.status === 200, "Should credit coins");
+        client.assert(response.body.newBalance !== undefined, "Should return new balance");
+    });
+%}
+
+###
+# @name GetEconomyConfig
+# 12.7 Get Economy Config
+GET {{host}}/game/economy/config
+Authorization: Bearer {{user_token}}
+
+> {%
+    client.test("Economy Config Retrieved", function () {
+        client.assert(response.status === 200, "Should return config");
+        client.assert(response.body.initialCoins !== undefined, "Should have initialCoins");
+    });
+%}
+
+###
+# ==========================================
+# 13. CLEANUP
 # ==========================================
 
 ###
 # @name DeleteUser_Test
-# 11.1 Soft delete the test user (preserves history)
+# 13.1 Soft delete the test user (preserves history)
 DELETE {{host}}/admin/players/{{user_id}}
 Authorization: Bearer {{admin_token}}
 
@@ -1246,13 +1350,13 @@ Authorization: Bearer {{admin_token}}
 
 ###
 # @name DeleteUser2_Test
-# 11.2 Delete second test user
+# 13.2 Delete second test user
 DELETE {{host}}/admin/players/{{user2_id}}
 Authorization: Bearer {{admin_token}}
 
 ###
 # @name DeleteLudoGame
-# 11.3 Delete Ludo game
+# 13.3 Delete Ludo game
 DELETE {{host}}/admin/games/{{ludo_room_id}}
 Authorization: Bearer {{admin_token}}
 
@@ -1266,31 +1370,31 @@ Authorization: Bearer {{admin_token}}
 
 ###
 # @name DeleteLudoTemplateGame
-# 11.4 Delete Ludo game created from template
+# 13.4 Delete Ludo game created from template
 DELETE {{host}}/admin/games/{{ludo_template_room_id}}
 Authorization: Bearer {{admin_token}}
 
 ###
 # @name DeleteMineGame
-# 11.5 Delete LuckyMine game
+# 13.5 Delete LuckyMine game
 DELETE {{host}}/admin/games/{{mine_room_id}}
 Authorization: Bearer {{admin_token}}
 
 ###
 # @name DeleteLuckyMineTemplateGame
-# 11.6 Delete LuckyMine game created from template
+# 13.6 Delete LuckyMine game created from template
 DELETE {{host}}/admin/games/{{luckymine_template_room_id}}
 Authorization: Bearer {{admin_token}}
 
 ###
 # @name DeleteHighRiskMineGame
-# 11.7 Delete high-risk LuckyMine game
+# 13.7 Delete high-risk LuckyMine game
 DELETE {{host}}/admin/games/{{high_risk_mine_room_id}}
 Authorization: Bearer {{admin_token}}
 
 ###
 # @name DeleteLudoTemplate
-# 11.8 Delete custom Ludo template
+# 13.8 Delete custom Ludo template
 DELETE {{host}}/admin/templates/{{ludo_template_id}}
 Authorization: Bearer {{admin_token}}
 
@@ -1302,13 +1406,13 @@ Authorization: Bearer {{admin_token}}
 
 ###
 # @name DeleteLuckyMineTemplate
-# 11.9 Delete custom LuckyMine template
+# 13.9 Delete custom LuckyMine template
 DELETE {{host}}/admin/templates/{{luckymine_template_id}}
 Authorization: Bearer {{admin_token}}
 
 ###
 # @name VerifyCleanup
-# 11.10 Verify games were cleaned up
+# 13.10 Verify games were cleaned up
 GET {{host}}/admin/games
 Authorization: Bearer {{admin_token}}
 
