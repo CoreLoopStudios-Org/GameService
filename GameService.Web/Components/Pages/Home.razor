@@ -3,7 +3,6 @@
 @attribute [Authorize]
 @rendermode InteractiveServer
 @using GameService.ServiceDefaults.DTOs
-@implements IDisposable
 
 @inject GameAdminService AdminService
 @inject AuthenticationStateProvider AuthStateProvider
@@ -394,6 +393,8 @@
     private async Task OpenBroadcastModal()
     {
         broadcastMessage = "";
+        StateHasChanged();
+        await Task.Yield();
         await JS.InvokeVoidAsync("bootstrapUtils.showModal", broadcastModal);
     }
 
@@ -418,6 +419,8 @@
     {
         editingUser = user;
         coinAmount = 0;
+        StateHasChanged();
+        await Task.Yield();
         await JS.InvokeVoidAsync("bootstrapUtils.showModal", editCoinsModal);
     }
 
@@ -440,6 +443,8 @@
     private async Task ConfirmDelete(AdminPlayerDto user)
     {
         deletingUser = user;
+        StateHasChanged();
+        await Task.Yield();
         await JS.InvokeVoidAsync("bootstrapUtils.showModal", deleteModal);
     }
 
@@ -464,6 +469,7 @@
         historyUser = user;
         historyItems = null;
         StateHasChanged();
+        await Task.Yield();
         await JS.InvokeVoidAsync("bootstrapUtils.showModal", historyModal);
         
         var result = await AdminService.GetPlayerHistoryAsync(user.UserId, 1);
@@ -478,9 +484,21 @@
         return num.ToString("N0");
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _isDisposed = true;
         Notifier.OnPlayerUpdated -= HandleUpdate;
+        
+        try 
+        {
+            await JS.InvokeVoidAsync("bootstrapUtils.hideModal", broadcastModal);
+            await JS.InvokeVoidAsync("bootstrapUtils.hideModal", editCoinsModal);
+            await JS.InvokeVoidAsync("bootstrapUtils.hideModal", deleteModal);
+            await JS.InvokeVoidAsync("bootstrapUtils.hideModal", historyModal);
+        }
+        catch
+        {
+            // Ignore errors during disposal
+        }
     }
 }

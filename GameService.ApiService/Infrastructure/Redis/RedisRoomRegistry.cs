@@ -267,6 +267,32 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
         return members.Select(m => m.ToString()).ToList();
     }
 
+    private static string TimeoutIndexKey(string gameType) => $"index:timeouts:{gameType}";
+
+    public async Task RegisterTurnTimeoutAsync(string roomId, string gameType, DateTimeOffset expiry)
+    {
+        await _db.SortedSetAddAsync(TimeoutIndexKey(gameType), roomId, expiry.ToUnixTimeSeconds());
+    }
+
+    public async Task UnregisterTurnTimeoutAsync(string roomId, string gameType)
+    {
+        await _db.SortedSetRemoveAsync(TimeoutIndexKey(gameType), roomId);
+    }
+
+    public async Task<IReadOnlyList<string>> GetRoomsDueForTimeoutAsync(string gameType, int maxRooms)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var members = await _db.SortedSetRangeByScoreAsync(
+            TimeoutIndexKey(gameType),
+            double.NegativeInfinity,
+            now,
+            Exclude.None,
+            Order.Ascending,
+            0,
+            maxRooms);
+        return members.Select(m => m.ToString()).ToList();
+    }
+
     public async Task UpdateRoomActivityAsync(string roomId, string gameType)
     {
         var score = DateTimeOffset.UtcNow.ToUnixTimeSeconds();

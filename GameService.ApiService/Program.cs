@@ -143,6 +143,9 @@ builder.Services.AddScoped<IGameArchivalService, GameArchivalService>();
 builder.Services.AddGameModule<LudoModule>();
 builder.Services.AddGameModule<LuckyMineModule>();
 
+builder.Services.AddSingleton<ShardedGameCommandProcessor>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ShardedGameCommandProcessor>());
+
 builder.Services.AddHostedService<GameLoopWorker>();
 builder.Services.AddHostedService<SessionCleanupWorker>();
 builder.Services.AddHostedService<IdempotencyCleanupWorker>();
@@ -152,7 +155,7 @@ builder.Services.AddHostedService<GameStateSnapshotWorker>();
 builder.Services.AddSignalR()
     .AddStackExchangeRedis(builder.Configuration.GetConnectionString("cache") ??
                            throw new InvalidOperationException("Redis connection string is missing"))
-    .AddJsonProtocol();
+    .AddMessagePackProtocol();
 
 var app = builder.Build();
 

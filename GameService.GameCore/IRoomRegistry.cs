@@ -38,6 +38,10 @@ public interface IRoomRegistry
     Task DecrementConnectionCountAsync(string userId, string connectionId);
 
     Task<IReadOnlyList<string>> GetRoomsNeedingTimeoutCheckAsync(string gameType, int maxRooms);
+    
+    Task RegisterTurnTimeoutAsync(string roomId, string gameType, DateTimeOffset expiry);
+    Task UnregisterTurnTimeoutAsync(string roomId, string gameType);
+    Task<IReadOnlyList<string>> GetRoomsDueForTimeoutAsync(string gameType, int maxRooms);
 
     Task UpdateRoomActivityAsync(string roomId, string gameType);
 

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using GameService.ApiService.Features.Economy;
+using GameService.ApiService.Infrastructure;
 using GameService.GameCore;
 using GameService.ServiceDefaults.Configuration;
 using GameService.ServiceDefaults.Data;
@@ -20,9 +21,11 @@ public class GameHub(
     IServiceScopeFactory serviceScopeFactory,
     IOptions<GameServiceOptions> options,
     IConnectionMultiplexer redis,
+    ShardedGameCommandProcessor commandProcessor,
     ILogger<GameHub> logger) : Hub<IGameClient>
 {
     private readonly IDatabase _redisDb = redis.GetDatabase();
+    private readonly ShardedGameCommandProcessor _commandProcessor = commandProcessor;
     private readonly int _maxConnectionsPerUser = options.Value.Session.MaxConnectionsPerUser;
     private readonly int _maxMessagesPerMinute = options.Value.RateLimit.SignalRMessagesPerMinute;
     private readonly int _reconnectionGracePeriodSeconds = options.Value.Session.ReconnectionGracePeriodSeconds;
@@ -70,27 +73,6 @@ public class GameHub(
         }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, "Lobby");
-
-        var capturedUserId = UserId;
-        var capturedConnectionId = Context.ConnectionId;
-        _ = Task.Run(async () =>
-        {
-            while (!Context.ConnectionAborted.IsCancellationRequested)
-            {
-                try
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(30), Context.ConnectionAborted);
-                    await roomRegistry.IncrementConnectionCountAsync(capturedUserId, capturedConnectionId);
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch
-                {
-                }
-            }
-        });
 
         var disconnectedRoomId = await roomRegistry.TryGetAndRemoveDisconnectedPlayerAsync(UserId);
         if (disconnectedRoomId != null)
@@ -392,73 +374,81 @@ public class GameHub(
         var engine = serviceProvider.GetKeyedService<IGameEngine>(gameType);
         if (engine == null) return GameActionResult.Error("Game engine not available");
 
-        if (!await roomRegistry.TryAcquireLockAsync(roomId, TimeSpan.FromSeconds(2)))
-            return GameActionResult.Error("Game is busy. Please retry.");
-
-        try
+        var capturedUserId = UserId;
+        
+        return await _commandProcessor.ProcessCommandAsync(roomId, async () =>
         {
-            var command = new GameCommand(UserId, actionName, payload);
-            var result = await engine.ExecuteAsync(roomId, command);
-
-            if (result.Success && result.ShouldBroadcast && result.NewState != null)
-                await Clients.Group(roomId).GameState((GameStateResponse)result.NewState);
-
-            foreach (var evt in result.Events)
-                await Clients.Group(roomId).GameEvent(new GameEventPayload(evt.EventName, evt.Data, evt.Timestamp));
-
-            if (!result.Success)
-                await Clients.Caller.ActionError(
-                    new ActionErrorPayload(actionName, result.ErrorMessage ?? "Unknown error"));
-
-            if (result.Success)
+            try
             {
-                await roomRegistry.UpdateRoomActivityAsync(roomId, gameType);
-                await MarkCommandProcessedAsync(roomId, commandId ?? "");
-            }
+                var command = new GameCommand(capturedUserId, actionName, payload);
+                var result = await engine.ExecuteAsync(roomId, command);
 
-            if (result.GameEnded != null)
-                try
+                if (result.Success && result.ShouldBroadcast && result.NewState != null)
+                    await Clients.Group(roomId).GameState((GameStateResponse)result.NewState);
+
+                foreach (var evt in result.Events)
+                    await Clients.Group(roomId).GameEvent(new GameEventPayload(evt.EventName, evt.Data, evt.Timestamp));
+
+                if (!result.Success)
+                    await Clients.Caller.ActionError(
+                        new ActionErrorPayload(actionName, result.ErrorMessage ?? "Unknown error"));
+
+                if (result.Success)
                 {
-                    using var scope = serviceProvider.CreateScope();
-                    var db = scope.ServiceProvider.GetRequiredService<GameDbContext>();
-                    var info = result.GameEnded;
+                    await roomRegistry.UpdateRoomActivityAsync(roomId, gameType);
+                    await MarkCommandProcessedAsync(roomId, commandId ?? "");
 
-                    var outboxPayload = JsonSerializer.Serialize(new GameEndedPayload(
-                        info.RoomId,
-                        info.GameType,
-                        info.PlayerSeats,
-                        info.WinnerUserId,
-                        info.TotalPot,
-                        info.StartedAt,
-                        info.WinnerRanking,
-                        result.NewState));
-
-                    db.OutboxMessages.Add(new OutboxMessage
+                    if (engine is ITurnBasedGameEngine turnEngine && result.NewState is GameStateResponse gameState)
                     {
-                        EventType = "GameEnded",
-                        Payload = outboxPayload,
-                        CreatedAt = DateTimeOffset.UtcNow
-                    });
-
-                    await db.SaveChangesAsync();
-                    logger.LogInformation("Scheduled archival for Room {RoomId}", info.RoomId);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Failed to schedule game archival for {RoomId}", roomId);
+                         var turnTimeout = turnEngine.TurnTimeoutSeconds;
+                         if (turnTimeout > 0)
+                         {
+                             var expiry = gameState.Meta.TurnStartedAt.AddSeconds(turnTimeout);
+                             await roomRegistry.RegisterTurnTimeoutAsync(roomId, gameType, expiry);
+                         }
+                    }
                 }
 
-            return result;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error executing action {Action} in room {RoomId}", actionName, roomId);
-            return GameActionResult.Error($"An error occurred: {ex.Message}");
-        }
-        finally
-        {
-            await roomRegistry.ReleaseLockAsync(roomId);
-        }
+                if (result.GameEnded != null)
+                    try
+                    {
+                        using var scope = serviceProvider.CreateScope();
+                        var db = scope.ServiceProvider.GetRequiredService<GameDbContext>();
+                        var info = result.GameEnded;
+
+                        var outboxPayload = JsonSerializer.Serialize(new GameEndedPayload(
+                            info.RoomId,
+                            info.GameType,
+                            info.PlayerSeats,
+                            info.WinnerUserId,
+                            info.TotalPot,
+                            info.StartedAt,
+                            info.WinnerRanking,
+                            result.NewState));
+
+                        db.OutboxMessages.Add(new OutboxMessage
+                        {
+                            EventType = "GameEnded",
+                            Payload = outboxPayload,
+                            CreatedAt = DateTimeOffset.UtcNow
+                        });
+
+                        await db.SaveChangesAsync();
+                        logger.LogInformation("Scheduled archival for Room {RoomId}", info.RoomId);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Failed to schedule game archival for {RoomId}", roomId);
+                    }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error executing action {Action} in room {RoomId}", actionName, roomId);
+                return GameActionResult.Error($"An error occurred: {ex.Message}");
+            }
+        });
     }
 
     public async Task<GameStateResponse?> GetState(string roomId)

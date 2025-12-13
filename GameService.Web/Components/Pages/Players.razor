@@ -6,6 +6,7 @@
 @inject ToastService Toast
 @inject ILogger<Players> Logger
 @inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <PageTitle>Player Management</PageTitle>
 
@@ -259,6 +260,8 @@
         editName = player.Username;
         editEmail = player.Email;
         editAvatarId = player.AvatarId;
+        StateHasChanged();
+        await Task.Yield();
         await JS.InvokeVoidAsync("bootstrapUtils.showModal", editModal);
     }
 
@@ -266,6 +269,8 @@
     {
         selectedPlayer = player;
         coinAdjustment = 0;
+        StateHasChanged();
+        await Task.Yield();
         await JS.InvokeVoidAsync("bootstrapUtils.showModal", coinModal);
     }
 
@@ -274,6 +279,8 @@
         selectedPlayer = player;
         historyLoading = true;
         history = new(); // Clear previous history
+        StateHasChanged();
+        await Task.Yield();
         await JS.InvokeVoidAsync("bootstrapUtils.showModal", historyModal);
         
         try
@@ -288,6 +295,7 @@
         finally
         {
             historyLoading = false;
+            StateHasChanged();
         }
     }
 
@@ -336,6 +344,20 @@
         catch
         {
             Toast.ShowError("Failed to delete player");
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try 
+        {
+            await JS.InvokeVoidAsync("bootstrapUtils.hideModal", editModal);
+            await JS.InvokeVoidAsync("bootstrapUtils.hideModal", coinModal);
+            await JS.InvokeVoidAsync("bootstrapUtils.hideModal", historyModal);
+        }
+        catch
+        {
+            // Ignore errors during disposal
         }
     }
 }

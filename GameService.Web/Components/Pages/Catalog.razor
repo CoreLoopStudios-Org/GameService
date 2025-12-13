@@ -5,6 +5,7 @@
 @inject GameAdminService AdminService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <PageTitle>Game Catalog</PageTitle>
 
@@ -135,6 +136,8 @@
         }
 
         entryFee = 0;
+        StateHasChanged();
+        await Task.Yield();
         await JS.InvokeVoidAsync("bootstrapUtils.showModal", createModal);
     }
 
@@ -152,4 +155,15 @@
         }
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        try 
+        {
+            await JS.InvokeVoidAsync("bootstrapUtils.hideModal", createModal);
+        }
+        catch
+        {
+            // Ignore errors during disposal
+        }
+    }
 }
