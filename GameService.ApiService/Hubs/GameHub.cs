@@ -3,6 +3,7 @@ using System.Text.Json;
 using GameService.ApiService.Features.Economy;
 using GameService.ApiService.Infrastructure;
 using GameService.GameCore;
+using CoreConstants = GameService.GameCore.GameConstants;
 using GameService.ServiceDefaults.Configuration;
 using GameService.ServiceDefaults.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -428,7 +429,7 @@ public class GameHub(
 
                         db.OutboxMessages.Add(new OutboxMessage
                         {
-                            EventType = "GameEnded",
+                            EventType = CoreConstants.Events.GameEnded,
                             Payload = outboxPayload,
                             CreatedAt = DateTimeOffset.UtcNow
                         });

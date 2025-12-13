@@ -7,8 +7,8 @@ namespace GameService.Ludo;
 
 public static class LudoActions
 {
-    public const string Roll = "roll";
-    public const string Move = "move";
+    public const string Roll = GameConstants.Actions.Roll;
+    public const string Move = GameConstants.Actions.Move;
 
     public static readonly string[] MoveActions = 
     [
@@ -51,7 +51,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         TurnTimeoutSeconds = options?.Value.TurnTimeoutSeconds ?? 30;
     }
 
-    public string GameType => "Ludo";
+    public string GameType => GameConstants.GameTypes.Ludo;
     public int TurnTimeoutSeconds { get; }
 
     public async Task<GameActionResult> ExecuteAsync(string roomId, GameCommand command)

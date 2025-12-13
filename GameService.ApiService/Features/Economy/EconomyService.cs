@@ -7,6 +7,7 @@ using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.DTOs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using CoreConstants = GameService.GameCore.GameConstants;
 
 namespace GameService.ApiService.Features.Economy;
 
@@ -133,7 +134,7 @@ public class EconomyService(
 
                             if (attempt < MaxRetryAttempts - 1)
                             {
-                                await Task.Delay(Random.Shared.Next(10, 50));
+                                await Task.Delay(Random.Shared.Next(10, 50)); // Optimistic Concurrency Control (OCC) backoff
                                 continue;
                             }
 
@@ -169,7 +170,7 @@ public class EconomyService(
                         newBalance = initialCoins;
                     }
 
-                    var txType = amount > 0 ? "Credit" : "Debit";
+                    var txType = amount > 0 ? CoreConstants.Economy.Credit : CoreConstants.Economy.Debit;
                     var description = amount > 0 ? "Deposit/Win" : "Withdrawal/Entry Fee";
 
                     var ledgerEntry = new WalletTransaction
@@ -187,7 +188,7 @@ public class EconomyService(
 
                     var outboxMessage = new OutboxMessage
                     {
-                        EventType = "PlayerUpdated",
+                        EventType = CoreConstants.Events.PlayerUpdated,
                         Payload = JsonSerializer.Serialize(new PlayerUpdatedMessage(
                             userId, newBalance, null, null)),
                         CreatedAt = DateTimeOffset.UtcNow
