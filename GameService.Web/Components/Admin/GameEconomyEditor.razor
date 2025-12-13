@@ -9,18 +9,18 @@
     <div class="card-body">
         <ul class="nav nav-tabs" id="economyTabs-@GameType" role="tablist">
             <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="onboarding-tab-@GameType" data-bs-toggle="tab" data-bs-target="#onboarding-@GameType" type="button" role="tab">Onboarding</button>
+                <button class="nav-link @(activeTab == TabOnboarding ? "active" : "")" id="onboarding-tab-@GameType" type="button" role="tab" @onclick="() => SetTab(TabOnboarding)">Onboarding</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="daily-tab-@GameType" data-bs-toggle="tab" data-bs-target="#daily-@GameType" type="button" role="tab">Daily Rewards</button>
+                <button class="nav-link @(activeTab == TabDaily ? "active" : "")" id="daily-tab-@GameType" type="button" role="tab" @onclick="() => SetTab(TabDaily)">Daily Rewards</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="spin-tab-@GameType" data-bs-toggle="tab" data-bs-target="#spin-@GameType" type="button" role="tab">Spin Wheel</button>
+                <button class="nav-link @(activeTab == TabSpin ? "active" : "")" id="spin-tab-@GameType" type="button" role="tab" @onclick="() => SetTab(TabSpin)">Spin Wheel</button>
             </li>
         </ul>
         <div class="tab-content p-3 border border-top-0" id="economyTabsContent-@GameType">
             <!-- Onboarding -->
-            <div class="tab-pane fade show active" id="onboarding-@GameType" role="tabpanel">
+            <div class="tab-pane fade @(activeTab == TabOnboarding ? "show active" : "")" id="onboarding-@GameType" role="tabpanel">
                 <div class="mb-3">
                     <label class="form-label">Welcome Bonus (Coins)</label>
                     <input type="number" class="form-control" @bind="EconomyConfig.WelcomeBonus" />
@@ -33,7 +33,7 @@
             </div>
 
             <!-- Daily Rewards -->
-            <div class="tab-pane fade" id="daily-@GameType" role="tabpanel">
+            <div class="tab-pane fade @(activeTab == TabDaily ? "show active" : "")" id="daily-@GameType" role="tabpanel">
                 <div class="form-check mb-3">
                     <input class="form-check-input" type="checkbox" @bind="DailyConfig.Enabled" id="dailyRewardsEnabled-@GameType">
                     <label class="form-check-label" for="dailyRewardsEnabled-@GameType">Enable Daily Rewards</label>
@@ -68,7 +68,7 @@
             </div>
 
             <!-- Spin Wheel -->
-            <div class="tab-pane fade" id="spin-@GameType" role="tabpanel">
+            <div class="tab-pane fade @(activeTab == TabSpin ? "show active" : "")" id="spin-@GameType" role="tabpanel">
                 <div class="form-check mb-3">
                     <input class="form-check-input" type="checkbox" @bind="SpinConfig.Enabled" id="spinEnabled-@GameType">
                     <label class="form-check-label" for="spinEnabled-@GameType">Enable Spin Wheel</label>
@@ -130,8 +130,15 @@
     private DailyRewardsWrapper DailyConfig { get; set; } = new();
     private SpinWheelConfig SpinConfig { get; set; } = new();
 
+    private const string TabOnboarding = "onboarding";
+    private const string TabDaily = "daily";
+    private const string TabSpin = "spin";
+
+    private string activeTab = TabOnboarding;
+
     protected override async Task OnParametersSetAsync()
     {
+        activeTab = TabOnboarding;
         await LoadData();
     }
 
@@ -141,6 +148,8 @@
         DailyConfig = await AdminService.GetDailyRewardsConfigAsync(GameType);
         SpinConfig = await AdminService.GetSpinWheelConfigAsync(GameType);
     }
+
+    private void SetTab(string tab) => activeTab = tab;
 
     private async Task SaveEconomy()
     {
