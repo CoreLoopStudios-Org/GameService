@@ -163,7 +163,6 @@ public class EconomyService(
 
                         var newProfile = new PlayerProfile { UserId = userId, Coins = initialCoins, User = user };
                         db.PlayerProfiles.Add(newProfile);
-                        // await db.SaveChangesAsync(); // Removed double save
                         newBalance = initialCoins;
                     }
 
@@ -213,7 +212,7 @@ public class EconomyService(
                 catch (DbUpdateConcurrencyException)
                 {
                     await transaction.RollbackAsync();
-                    db.ChangeTracker.Clear(); // Clear tracked entities to avoid re-saving stale state
+                    db.ChangeTracker.Clear();
                     if (attempt < MaxRetryAttempts - 1)
                     {
                         await Task.Delay(Random.Shared.Next(10, 50));

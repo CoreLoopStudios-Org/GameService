@@ -58,9 +58,6 @@ public sealed class SessionCleanupWorker(
                 await roomRegistry.RemoveUserRoomAsync(userId);
 
                 var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<GameHub, IGameClient>>();
-                // We don't have UserName here easily, but PlayerLeftPayload might handle null or we can fetch it.
-                // For now, send "Unknown" or fetch user.
-                // Fetching user is expensive. Let's send "Unknown" or just userId.
                 await hubContext.Clients.Group(roomId).PlayerLeft(new PlayerLeftPayload(userId, "Unknown"));
 
                 logger.LogInformation("Session cleanup: Removed player {UserId} from room {RoomId}", userId, roomId);

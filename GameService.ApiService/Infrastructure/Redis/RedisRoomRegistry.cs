@@ -44,8 +44,7 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
     public async Task<string> RegisterShortCodeAsync(string roomId)
     {
         var id = await _db.StringIncrementAsync(ShortCodeCounterKey);
-        
-        // Simple bijective obfuscation
+
         long x = id;
         x = (x * 2654435761) & 0xFFFFFFFF;
         x ^= x >> 13;

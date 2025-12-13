@@ -97,7 +97,6 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
 
         var events = new List<GameEvent> { new(LudoEvents.TurnTimeout, new { Player = state.CurrentPlayer }) };
 
-        // Handle extra-turns (e.g., rolling a 6) so timeouts don't "skip" the roll-again phase.
         for (var autoActions = 0; autoActions < 2 && !state.IsGameOver(); autoActions++)
         {
             var startingPlayer = state.CurrentPlayer;

@@ -88,7 +88,6 @@ public class GameHub(
                 }
                 catch
                 {
-                    // best-effort heartbeat; disconnect will clear when possible
                 }
             }
         });

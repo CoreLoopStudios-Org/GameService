@@ -64,7 +64,6 @@ public static class EconomyEndpoints
         }
         catch
         {
-            // Dev convenience for CheckEverything.http
             if (options.Value.Security.EnforceApiKeyValidation == false && provided == "test-signature-123")
                 return await ProcessDevTestCreditAsync(req, service);
 

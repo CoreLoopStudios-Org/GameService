@@ -25,6 +25,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
+builder.Services.AddProblemDetails();
+
 var gameServiceOptions = builder.Configuration.GetSection(GameServiceOptions.SectionName).Get<GameServiceOptions>() ??
                          new GameServiceOptions();
 var dbOptions = gameServiceOptions.Database;
@@ -169,6 +171,12 @@ else
         app.UseHsts();
     }
 }
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler();
+}
+app.UseStatusCodePages();
 
 app.UseCors();
 app.UseRateLimiter();
