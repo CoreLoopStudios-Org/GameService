@@ -21,10 +21,10 @@ public static class AuthEndpoints
                 }
                 else
                 {
-                    var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
-                    if (!string.IsNullOrEmpty(userId))
+                    var token = ctx.Request.Headers.Authorization.ToString().Replace("Bearer ", "", StringComparison.OrdinalIgnoreCase).Trim();
+                    if (!string.IsNullOrEmpty(token))
                     {
-                        await revocationService.RevokeAllUserTokensAsync(userId);
+                        await revocationService.RevokeAccessTokenAsync(token);
                     }
                 }
 

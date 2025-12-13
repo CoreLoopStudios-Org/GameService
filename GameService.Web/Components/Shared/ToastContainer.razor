@@ -1,43 +1,27 @@
 @inject ToastService ToastService
+@inject IJSRuntime JS
 @implements IDisposable
 
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1100">
     @foreach (var toast in toasts)
     {
-        <div class="toast show align-items-center text-white bg-@GetBgClass(toast.Level) border-0 mb-2 animate-slide-in"
-             role="alert">
+        <div @ref="toast.Element" class="toast align-items-center text-white bg-@GetBgClass(toast.Level) border-0 mb-2"
+             role="alert" aria-live="assertive" aria-atomic="true">
             <div class="d-flex">
                 <div class="toast-body">
                     <i class="@GetIcon(toast.Level) me-2"></i>
                     <strong>@toast.Title:</strong> @toast.Message
                 </div>
                 <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                        data-bs-dismiss="toast" aria-label="Close"
                         @onclick="() => Remove(toast)"></button>
             </div>
         </div>
     }
 </div>
 
-<style>
-    .animate-slide-in {
-        animation: slideIn 0.3s ease-out;
-    }
-
-    @@keyframes slideIn {
-        from {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
-    }
-</style>
-
 @code {
     private readonly List<ToastMessage> toasts = new();
-    private CancellationTokenSource _cts = new();
     private bool _disposed;
 
     protected override void OnInitialized()
@@ -45,7 +29,7 @@
         ToastService.OnShow += ShowToast;
     }
 
-    private void ShowToast(string title, string message, ToastLevel level)
+    private async void ShowToast(string title, string message, ToastLevel level)
     {
         if (_disposed) return;
         
@@ -53,14 +37,22 @@
         toasts.Add(toast);
         StateHasChanged();
 
-        var token = _cts.Token;
-        _ = Task.Delay(4000, token).ContinueWith(_ => 
+        // Wait for render to ensure Element is populated
+        await Task.Yield();
+        
+        if (toast.Element.Context != null)
+        {
+            await JS.InvokeVoidAsync("bootstrapUtils.showToast", toast.Element);
+        }
+
+        // Auto-remove from list after delay (Bootstrap default is 5000ms)
+        _ = Task.Delay(6000).ContinueWith(_ => 
         { 
             if (!_disposed)
             {
                 InvokeAsync(() => Remove(toast)); 
             }
-        }, TaskContinuationOptions.NotOnCanceled);
+        });
     }
 
     private void Remove(ToastMessage toast)
@@ -73,8 +65,6 @@
     public void Dispose()
     {
         _disposed = true;
-        _cts.Cancel();
-        _cts.Dispose();
         ToastService.OnShow -= ShowToast;
     }
 
@@ -107,6 +97,7 @@
         public string Title { get; set; } = "";
         public string Message { get; set; } = "";
         public ToastLevel Level { get; set; }
+        public ElementReference Element { get; set; }
     }
 
 }

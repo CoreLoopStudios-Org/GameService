@@ -7,11 +7,11 @@
         <NavMenu/>
     </div>
 
-    <main class="bg-light min-vh-100">
+    <main class="bg-body-tertiary min-vh-100">
         <!-- Top Navigation Bar -->
-        <header class="top-row px-4 d-flex justify-content-between align-items-center bg-white border-bottom shadow-sm"
+        <header class="top-row px-4 d-flex justify-content-between align-items-center bg-body border-bottom shadow-sm"
                 style="height: 64px;">
-            <div class="fw-bold text-dark d-flex align-items-center">
+            <div class="fw-bold text-body-emphasis d-flex align-items-center">
                 <span class="badge bg-dark me-2">v1.0</span>
                 Admin Dashboard
             </div>
@@ -21,7 +21,7 @@
                     <Authorized Context="authContext">
                         <form class="d-none d-lg-flex align-items-center gap-2 me-2" @onsubmit="JumpToRoom" @onsubmit:preventDefault="true">
                             <div class="input-group input-group-sm">
-                                <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
+                                <span class="input-group-text bg-body-tertiary"><i class="bi bi-search"></i></span>
                                 <input class="form-control" placeholder="Jump to Room ID…" aria-label="Room ID" autocomplete="off" @bind="jumpRoomId" />
                             </div>
                             <button type="submit" class="btn btn-sm btn-outline-primary">Go</button>
@@ -29,7 +29,7 @@
 
                         <div class="dropdown">
                             <button
-                                class="btn btn-link text-decoration-none dropdown-toggle d-flex align-items-center text-dark p-0"
+                                class="btn btn-link text-decoration-none dropdown-toggle d-flex align-items-center text-body p-0"
                                 type="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 <div
                                     class="avatar bg-primary text-white rounded-circle me-2 d-flex align-items-center justify-content-center"

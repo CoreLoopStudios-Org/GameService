@@ -4,6 +4,7 @@
 @rendermode InteractiveServer
 @inject GameAdminService AdminService
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Game Catalog</PageTitle>
 
@@ -58,46 +59,43 @@
     }
 </div>
 
-@if (showModal)
-{
-    <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5)">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Create @selectedGameName Room</h5>
-                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+<div class="modal fade" @ref="createModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create @selectedGameName Room</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Player Capacity (Max 20)</label>
+                    <input type="number" class="form-control" @bind="playerCount" min="1" max="20"/>
                 </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Player Capacity (Max 20)</label>
-                        <input type="number" class="form-control" @bind="playerCount" min="1" max="20"/>
-                    </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Entry Fee (Coins)</label>
-                        <input type="number" class="form-control" @bind="entryFee" min="0" step="10"/>
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label">Entry Fee (Coins)</label>
+                    <input type="number" class="form-control" @bind="entryFee" min="0" step="10"/>
+                </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Config JSON <small class="text-muted">(Optional)</small></label>
-                        <textarea class="form-control" @bind="configJson" placeholder='{"TotalMines": 20}'
-                                  rows="2"></textarea>
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label">Config JSON <small class="text-muted">(Optional)</small></label>
+                    <textarea class="form-control" @bind="configJson" placeholder='{"TotalMines": 20}'
+                              rows="2"></textarea>
                 </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
-                    <button class="btn btn-success" @onclick="CreateGame">
-                        Launch Room <i class="bi bi-rocket-takeoff-fill ms-2"></i>
-                    </button>
-                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-success" @onclick="CreateGame">
+                    Launch Room <i class="bi bi-rocket-takeoff-fill ms-2"></i>
+                </button>
             </div>
         </div>
     </div>
-}
+</div>
 
 @code {
     private List<SupportedGameDto>? games;
-    private bool showModal;
+    private ElementReference createModal;
 
     private string search = "";
 
@@ -120,7 +118,7 @@
         games = await AdminService.GetSupportedGamesAsync();
     }
 
-    private void OpenCreateModal(SupportedGameDto game)
+    private async Task OpenCreateModal(SupportedGameDto game)
     {
         selectedGameType = game.Type;
         selectedGameName = game.Name;
@@ -137,12 +135,7 @@
         }
 
         entryFee = 0;
-        showModal = true;
-    }
-
-    private void CloseModal()
-    {
-        showModal = false;
+        await JS.InvokeVoidAsync("bootstrapUtils.showModal", createModal);
     }
 
     private async Task CreateGame()
@@ -151,7 +144,7 @@
         if (playerCount > 20) playerCount = 20;
 
         var roomId = await AdminService.CreateGameAsync(selectedGameType, playerCount, entryFee, configJson);
-        showModal = false;
+        await JS.InvokeVoidAsync("bootstrapUtils.hideModal", createModal);
 
         if (!string.IsNullOrEmpty(roomId))
         {

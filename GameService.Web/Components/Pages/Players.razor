@@ -94,16 +94,17 @@
     }
 </div>
 
-@if (showEditModal)
-{
-    <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5)">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Edit Profile: @selectedPlayer?.Username</h5>
-                    <button type="button" class="btn-close" @onclick="CloseModals"></button>
-                </div>
-                <div class="modal-body">
+<!-- Edit Modal -->
+<div class="modal fade" @ref="editModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Profile</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                @if (selectedPlayer != null)
+                {
                     <div class="mb-3">
                         <label class="form-label">Display Name</label>
                         <input type="text" class="form-control" @bind="editName" />
@@ -116,91 +117,87 @@
                         <label class="form-label">Avatar ID</label>
                         <input type="number" class="form-control" @bind="editAvatarId" />
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseModals">Cancel</button>
-                    <button type="button" class="btn btn-primary" @onclick="SaveProfile">Save Changes</button>
-                </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveProfile">Save Changes</button>
             </div>
         </div>
     </div>
-}
+</div>
 
-@if (showCoinModal)
-{
-    <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5)">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Adjust Coins: @selectedPlayer?.Username</h5>
-                    <button type="button" class="btn-close" @onclick="CloseModals"></button>
+<!-- Coin Modal -->
+<div class="modal fade" @ref="coinModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Adjust Coins: @selectedPlayer?.Username</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Amount (Positive to add, Negative to deduct)</label>
+                    <input type="number" class="form-control" @bind="coinAdjustment" />
                 </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Amount (Positive to add, Negative to deduct)</label>
-                        <input type="number" class="form-control" @bind="coinAdjustment" />
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseModals">Cancel</button>
-                    <button type="button" class="btn btn-primary" @onclick="SaveCoins">Apply</button>
-                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveCoins">Apply</button>
             </div>
         </div>
     </div>
-}
+</div>
 
-@if (showHistoryModal)
-{
-    <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5)">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Wallet History: @selectedPlayer?.Username</h5>
-                    <button type="button" class="btn-close" @onclick="CloseModals"></button>
-                </div>
-                <div class="modal-body">
-                    @if (historyLoading)
-                    {
-                        <div class="text-center"><div class="spinner-border text-primary"></div></div>
-                    }
-                    else if (history.Count == 0)
-                    {
-                        <div class="text-center text-muted">No transactions found.</div>
-                    }
-                    else
-                    {
-                        <table class="table table-sm">
-                            <thead>
+<!-- History Modal -->
+<div class="modal fade" @ref="historyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Wallet History: @selectedPlayer?.Username</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                @if (historyLoading)
+                {
+                    <div class="text-center"><div class="spinner-border text-primary"></div></div>
+                }
+                else if (history.Count == 0)
+                {
+                    <div class="text-center text-muted">No transactions found.</div>
+                }
+                else
+                {
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                                <th>Balance</th>
+                                <th>Desc</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var tx in history)
+                            {
                                 <tr>
-                                    <th>Date</th>
-                                    <th>Type</th>
-                                    <th>Amount</th>
-                                    <th>Balance</th>
-                                    <th>Desc</th>
+                                    <td>@tx.CreatedAt.ToString("g")</td>
+                                    <td>@tx.TransactionType</td>
+                                    <td class="@(tx.Amount > 0 ? "text-success" : "text-danger")">
+                                        @tx.Amount.ToString("+0;-0")
+                                    </td>
+                                    <td>@tx.BalanceAfter</td>
+                                    <td class="small text-muted">@tx.Description</td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var tx in history)
-                                {
-                                    <tr>
-                                        <td>@tx.CreatedAt.ToString("g")</td>
-                                        <td>@tx.TransactionType</td>
-                                        <td class="@(tx.Amount > 0 ? "text-success" : "text-danger")">
-                                            @tx.Amount.ToString("+0;-0")
-                                        </td>
-                                        <td>@tx.BalanceAfter</td>
-                                        <td class="small text-muted">@tx.Description</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    }
-                </div>
+                            }
+                        </tbody>
+                    </table>
+                }
             </div>
         </div>
     </div>
-}
+</div>
 
 <style>
     .avatar-circle {
@@ -219,9 +216,10 @@
     private List<AdminPlayerDto> players = new();
     
     private AdminPlayerDto? selectedPlayer;
-    private bool showEditModal;
-    private bool showCoinModal;
-    private bool showHistoryModal;
+    
+    private ElementReference editModal;
+    private ElementReference coinModal;
+    private ElementReference historyModal;
 
     private string editName = "";
     private string editEmail = "";
@@ -255,27 +253,29 @@
         }
     }
 
-    private void EditPlayer(AdminPlayerDto player)
+    private async Task EditPlayer(AdminPlayerDto player)
     {
         selectedPlayer = player;
         editName = player.Username;
         editEmail = player.Email;
         editAvatarId = player.AvatarId;
-        showEditModal = true;
+        await JS.InvokeVoidAsync("bootstrapUtils.showModal", editModal);
     }
 
-    private void AdjustCoins(AdminPlayerDto player)
+    private async Task AdjustCoins(AdminPlayerDto player)
     {
         selectedPlayer = player;
         coinAdjustment = 0;
-        showCoinModal = true;
+        await JS.InvokeVoidAsync("bootstrapUtils.showModal", coinModal);
     }
 
     private async Task ViewHistory(AdminPlayerDto player)
     {
         selectedPlayer = player;
-        showHistoryModal = true;
         historyLoading = true;
+        history = new(); // Clear previous history
+        await JS.InvokeVoidAsync("bootstrapUtils.showModal", historyModal);
+        
         try
         {
             var result = await AdminService.GetPlayerHistoryAsync(player.UserId);
@@ -291,14 +291,6 @@
         }
     }
 
-    private void CloseModals()
-    {
-        showEditModal = false;
-        showCoinModal = false;
-        showHistoryModal = false;
-        selectedPlayer = null;
-    }
-
     private async Task SaveProfile()
     {
         if (selectedPlayer == null) return;
@@ -306,7 +298,7 @@
         {
             await AdminService.UpdatePlayerProfileAsync(selectedPlayer.UserId, new AdminUpdateProfileRequest(editName, editAvatarId, editEmail));
             Toast.ShowSuccess("Profile updated");
-            CloseModals();
+            await JS.InvokeVoidAsync("bootstrapUtils.hideModal", editModal);
             await LoadPlayers();
         }
         catch
@@ -322,7 +314,7 @@
         {
             await AdminService.UpdatePlayerCoinsAsync(selectedPlayer.UserId, coinAdjustment);
             Toast.ShowSuccess("Coins updated");
-            CloseModals();
+            await JS.InvokeVoidAsync("bootstrapUtils.hideModal", coinModal);
             await LoadPlayers();
         }
         catch
