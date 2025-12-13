@@ -53,10 +53,19 @@ builder.AddNpgsqlDbContext<GameDbContext>("postgresdb", configureDbContextOption
 
 builder.AddRedisClient("cache");
 
-var redis = ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("cache") ?? throw new InvalidOperationException("Redis connection string is missing"));
-builder.Services.AddDataProtection()
-    .PersistKeysToStackExchangeRedis(redis, "DataProtection-Keys")
-    .SetApplicationName("GameService");
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "DataProtection-Keys")))
+        .SetApplicationName("GameService");
+}
+else
+{
+    var redis = ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("cache") ?? throw new InvalidOperationException("Redis connection string is missing"));
+    builder.Services.AddDataProtection()
+        .PersistKeysToStackExchangeRedis(redis, "DataProtection-Keys")
+        .SetApplicationName("GameService");
+}
 
 builder.Services.Configure<GameServiceOptions>(builder.Configuration.GetSection(GameServiceOptions.SectionName));
 builder.Services.Configure<AdminSettings>(builder.Configuration.GetSection(AdminSettings.SectionName));

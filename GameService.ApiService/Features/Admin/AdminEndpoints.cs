@@ -563,13 +563,35 @@ public static class AdminEndpoints
         if (!InputValidator.IsValidUserId(userId))
             return Results.BadRequest("Invalid user ID format");
 
-        if (!InputValidator.IsValidCoinAmount(req.Amount))
+        long amount;
+        try
+        {
+            if (req.Amount is JsonElement je)
+            {
+                if (!je.TryGetInt64(out amount))
+                    return Results.BadRequest("Invalid amount (overflow or format)");
+            }
+            else if (req.Amount is long l)
+            {
+                amount = l;
+            }
+            else
+            {
+                return Results.BadRequest("Invalid amount format");
+            }
+        }
+        catch
+        {
+            return Results.BadRequest("Invalid amount");
+        }
+
+        if (!InputValidator.IsValidCoinAmount(amount))
             return Results.BadRequest("Invalid amount");
 
         var adminId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "api-key-admin";
         var referenceId = $"ADMIN:{InputValidator.SanitizeForLogging(adminId, 50)}";
 
-        var result = await economyService.ProcessTransactionAsync(userId, req.Amount, referenceId);
+        var result = await economyService.ProcessTransactionAsync(userId, amount, referenceId);
 
         if (!result.Success)
         {

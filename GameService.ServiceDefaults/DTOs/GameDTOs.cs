@@ -1,6 +1,6 @@
 namespace GameService.ServiceDefaults.DTOs;
 
-public record UpdateCoinRequest(long Amount, string? IdempotencyKey = null, string? ReferenceId = null);
+public record UpdateCoinRequest(object Amount, string? IdempotencyKey = null, string? ReferenceId = null);
 
 public record struct PlayerProfileResponse(string UserId, long Coins, string? ActiveRoomId = null, string? ActiveGameType = null);
 

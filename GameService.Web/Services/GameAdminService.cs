@@ -48,7 +48,7 @@ public class GameAdminService(HttpClient http)
 
     public async Task UpdatePlayerCoinsAsync(string userId, long amount)
     {
-        var response = await http.PostAsJsonAsync($"/admin/players/{userId}/coins", new UpdateCoinRequest(amount));
+        var response = await http.PostAsJsonAsync($"/admin/players/{userId}/coins", new UpdateCoinRequest(amount, null, null));
         response.EnsureSuccessStatusCode();
     }
 

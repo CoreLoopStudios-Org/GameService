@@ -362,7 +362,29 @@ public static class EconomyEndpoints
         var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
 
-        if (!InputValidator.IsValidCoinAmount(req.Amount))
+        long amount;
+        try
+        {
+            if (req.Amount is JsonElement je)
+            {
+                if (!je.TryGetInt64(out amount))
+                    return Results.BadRequest("Invalid amount (overflow or format)");
+            }
+            else if (req.Amount is long l)
+            {
+                amount = l;
+            }
+            else
+            {
+                return Results.BadRequest("Invalid amount format");
+            }
+        }
+        catch
+        {
+            return Results.BadRequest("Invalid amount");
+        }
+
+        if (!InputValidator.IsValidCoinAmount(amount))
             return Results.BadRequest("Invalid amount");
 
         if (!InputValidator.IsValidReferenceId(req.ReferenceId))
@@ -371,12 +393,12 @@ public static class EconomyEndpoints
         if (!InputValidator.IsValidIdempotencyKey(req.IdempotencyKey))
             return Results.BadRequest("Invalid idempotency key format");
 
-        if (req.Amount > 0)
+        if (amount > 0)
         {
             return Results.BadRequest("Users cannot credit coins directly. Use the payment webhook endpoint.");
         }
 
-        var result = await service.ProcessTransactionAsync(userId, req.Amount, req.ReferenceId, req.IdempotencyKey);
+        var result = await service.ProcessTransactionAsync(userId, amount, req.ReferenceId, req.IdempotencyKey);
 
         if (!result.Success)
         {
