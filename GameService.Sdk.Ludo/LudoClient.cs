@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Threading;
 using GameService.Sdk.Core;
 
 namespace GameService.Sdk.Ludo;
@@ -6,7 +7,8 @@ namespace GameService.Sdk.Ludo;
 public sealed class LudoClient
 {
     private readonly GameClient _client;
-    private LudoState? _lastState;
+    private readonly SynchronizationContext? _uiContext;
+    private volatile LudoState? _lastState;
 
     public int MySeat { get; private set; } = -1;
 
@@ -49,6 +51,7 @@ public sealed class LudoClient
     public LudoClient(GameClient client)
     {
         _client = client;
+        _uiContext = SynchronizationContext.Current;
 
         _client.OnGameState += HandleGameState;
         _client.OnGameEvent += HandleGameEvent;
@@ -108,8 +111,68 @@ public sealed class LudoClient
             return new MoveResult(false, "Token index must be 0-3");
         }
 
+        // Optimistic Update
+        var previousState = _lastState;
+        if (previousState != null)
+        {
+            var predicted = PredictMove(previousState, tokenIndex);
+            if (predicted != null)
+            {
+                _lastState = predicted;
+                OnStateUpdated?.Invoke(predicted);
+            }
+        }
+
         var result = await _client.PerformActionAsync("Move", new { TokenIndex = tokenIndex });
+        
+        if (!result.Success)
+        {
+            // Rollback
+            if (previousState != null)
+            {
+                _lastState = previousState;
+                OnStateUpdated?.Invoke(previousState);
+            }
+        }
+
         return new MoveResult(result.Success, result.Error);
+    }
+
+    private LudoState? PredictMove(LudoState state, int tokenIndex)
+    {
+        try 
+        {
+            // Deep clone
+            var json = JsonSerializer.Serialize(state);
+            var newState = JsonSerializer.Deserialize<LudoState>(json);
+            if (newState == null) return null;
+
+            // Simple prediction logic (placeholder for full game logic)
+            // In a real app, this would duplicate the server's move logic
+            var tokens = GetPlayerTokens(newState, MySeat);
+            if (tokenIndex < tokens.Length)
+            {
+                // Just advance visually to show responsiveness
+                // The server state will correct this shortly
+                var currentPos = tokens[tokenIndex];
+                if (currentPos != -1) // Don't move if in home base without 6, etc. (simplified)
+                {
+                     // This is a very rough approximation just to show the UI update
+                     // We don't update the actual array in the clone because it's a flat array in LudoState
+                     // and we need to find the right index.
+                     var baseIndex = MySeat * 4;
+                     if (newState.Tokens != null && newState.Tokens.Length > baseIndex + tokenIndex)
+                     {
+                         newState.Tokens[baseIndex + tokenIndex] = (byte)(newState.Tokens[baseIndex + tokenIndex] + newState.LastDiceRoll);
+                     }
+                }
+            }
+            return newState;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public async Task<ActionResult> SkipTurnAsync()
@@ -163,19 +226,31 @@ public sealed class LudoClient
         var ludoState = ParseState(state.GameData);
         if (ludoState == null) return;
 
-        var previousPlayer = _lastState?.CurrentPlayer ?? -1;
-        _lastState = ludoState;
+        var previousState = Interlocked.Exchange(ref _lastState, ludoState);
+        var previousPlayer = previousState?.CurrentPlayer ?? -1;
 
-        OnStateUpdated?.Invoke(ludoState);
+        RunOnUi(() => OnStateUpdated?.Invoke(ludoState));
 
         if (ludoState.CurrentPlayer != previousPlayer)
         {
-            OnTurnChanged?.Invoke(ludoState.CurrentPlayer);
+            RunOnUi(() => OnTurnChanged?.Invoke(ludoState.CurrentPlayer));
         }
 
         if (ludoState.IsGameOver)
         {
-            OnGameEnded?.Invoke(UnpackWinners(ludoState.WinnersPacked));
+            RunOnUi(() => OnGameEnded?.Invoke(UnpackWinners(ludoState.WinnersPacked)));
+        }
+    }
+
+    private void RunOnUi(Action action)
+    {
+        if (_uiContext != null)
+        {
+            _uiContext.Post(_ => action(), null);
+        }
+        else
+        {
+            action();
         }
     }
 
@@ -188,7 +263,7 @@ public sealed class LudoClient
                 {
                     var seat = GetInt(diceData, "player", "seat");
                     var value = GetInt(diceData, "value");
-                    OnDiceRolled?.Invoke(seat, value);
+                    RunOnUi(() => OnDiceRolled?.Invoke(seat, value));
                 }
                 break;
 
@@ -206,7 +281,7 @@ public sealed class LudoClient
                         if (token >= 0 && token < tokens.Length) from = tokens[token];
                     }
 
-                    OnTokenMoved?.Invoke(seat, token, from, to);
+                    RunOnUi(() => OnTokenMoved?.Invoke(seat, token, from, to));
                 }
                 break;
 
@@ -215,7 +290,7 @@ public sealed class LudoClient
                 {
                     var seat = GetInt(captureData, "capturedPlayer", "seat");
                     var token = GetInt(captureData, "capturedToken", "token");
-                    OnTokenCaptured?.Invoke(seat, token);
+                    RunOnUi(() => OnTokenCaptured?.Invoke(seat, token));
                 }
                 break;
 
@@ -223,7 +298,7 @@ public sealed class LudoClient
                 if (evt.Data is JsonElement finishData)
                 {
                     var seat = GetInt(finishData, "player", "seat");
-                    OnPlayerFinished?.Invoke(seat);
+                    RunOnUi(() => OnPlayerFinished?.Invoke(seat));
                 }
                 break;
 
@@ -231,7 +306,7 @@ public sealed class LudoClient
                 if (evt.Data is JsonElement timeoutData)
                 {
                     var player = GetInt(timeoutData, "player");
-                    OnTurnTimeout?.Invoke(player);
+                    RunOnUi(() => OnTurnTimeout?.Invoke(player));
                 }
                 break;
         }

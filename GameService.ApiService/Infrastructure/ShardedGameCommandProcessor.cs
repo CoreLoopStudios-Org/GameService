@@ -45,7 +45,7 @@ public class ShardedGameCommandProcessor : IHostedService
     public Task<GameActionResult> ProcessCommandAsync(string roomId, Func<Task<GameActionResult>> action)
     {
         var tcs = new TaskCompletionSource<GameActionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var shardIndex = (Math.Abs(roomId.GetHashCode()) % _shardCount);
+        var shardIndex = (Math.Abs(GetStableHashCode(roomId)) % _shardCount);
         
         var context = new GameCommandContext(roomId, action, tcs);
         if (!_shards[shardIndex].Writer.TryWrite(context))
@@ -54,6 +54,27 @@ public class ShardedGameCommandProcessor : IHostedService
         }
 
         return tcs.Task;
+    }
+
+    private static int GetStableHashCode(string str)
+    {
+        unchecked
+        {
+            const int p = 16777619;
+            int hash = (int)2166136261;
+
+            for (int i = 0; i < str.Length; i++)
+            {
+                hash = (hash ^ str[i]) * p;
+            }
+
+            hash += hash << 13;
+            hash ^= hash >> 7;
+            hash += hash << 3;
+            hash ^= hash >> 17;
+            hash += hash << 5;
+            return hash;
+        }
     }
 
     private async Task ProcessShardAsync(int shardIndex, CancellationToken ct)

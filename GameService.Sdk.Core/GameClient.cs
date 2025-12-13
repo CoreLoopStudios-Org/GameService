@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Diagnostics;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GameService.Sdk.Core;
 
@@ -61,6 +62,7 @@ public sealed class GameClient : IAsyncDisposable
             {
                 options.AccessTokenProvider = accessTokenProvider;
             })
+            .AddMessagePackProtocol()
             .WithAutomaticReconnect(new RetryPolicy())
             .Build();
 
@@ -246,10 +248,21 @@ public sealed class GameClient : IAsyncDisposable
             return Task.CompletedTask;
         };
 
-        _hub.Reconnected += _ =>
+        _hub.Reconnected += async _ =>
         {
             OnConnectionStateChanged?.Invoke(ConnectionState.Connected);
-            return Task.CompletedTask;
+            if (CurrentRoomId != null)
+            {
+                try
+                {
+                    var state = await GetStateAsync();
+                    if (state != null) OnGameState?.Invoke(state);
+                }
+                catch
+                {
+                    // Ignore sync errors, will retry on next action or heartbeat
+                }
+            }
         };
 
         _hub.Closed += _ =>
