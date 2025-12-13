@@ -42,7 +42,7 @@ public class RedisLogStreamer(
 
                         var update = JsonSerializer.Deserialize(payload, ServiceDefaultsJsonContext.Default.PlayerUpdatedMessage);
 
-                        if (update != null) _updateChannel.Writer.TryWrite(update);
+                        if (update != null) await _updateChannel.Writer.WriteAsync(update, stoppingToken);
                     }
                     catch (JsonException jex)
                     {

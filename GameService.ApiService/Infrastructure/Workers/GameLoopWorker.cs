@@ -1,5 +1,9 @@
+using System.Text.Json;
+using GameService.ApiService.Hubs;
 using GameService.GameCore;
 using GameService.ServiceDefaults.Configuration;
+using GameService.ServiceDefaults.Data;
+using GameService.ServiceDefaults.DTOs;
 using Microsoft.Extensions.Options;
 
 namespace GameService.ApiService.Infrastructure.Workers;
@@ -73,6 +77,33 @@ public sealed class GameLoopWorker(
                                 await broadcaster.BroadcastResultAsync(roomId, result);
 
                                 await roomRegistry.UpdateRoomActivityAsync(roomId, module.GameName);
+
+                                if (result.GameEnded != null)
+                                {
+                                    using var scope = serviceProvider.CreateScope();
+                                    var db = scope.ServiceProvider.GetRequiredService<GameDbContext>();
+                                    var info = result.GameEnded;
+
+                                    var outboxPayload = JsonSerializer.Serialize(new GameEndedPayload(
+                                        info.RoomId,
+                                        info.GameType,
+                                        info.PlayerSeats,
+                                        info.WinnerUserId,
+                                        info.TotalPot,
+                                        info.StartedAt,
+                                        info.WinnerRanking,
+                                        result.NewState));
+
+                                    db.OutboxMessages.Add(new OutboxMessage
+                                    {
+                                        EventType = "GameEnded",
+                                        Payload = outboxPayload,
+                                        CreatedAt = DateTimeOffset.UtcNow
+                                    });
+
+                                    await db.SaveChangesAsync(ct);
+                                    logger.LogInformation("Game {RoomId} ended via timeout. Scheduled payout.", roomId);
+                                }
                             }
                         }
                         finally

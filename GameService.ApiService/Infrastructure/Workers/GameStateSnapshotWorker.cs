@@ -42,10 +42,13 @@ public sealed class GameStateSnapshotWorker(
 
     private async Task SnapshotActiveGamesAsync(CancellationToken ct)
     {
+        var db = redis.GetDatabase();
+        if (!await db.StringSetAsync("snapshot_worker_leader", Environment.MachineName, TimeSpan.FromMinutes(2), When.NotExists))
+            return;
+
         var roomIds = await roomRegistry.GetAllRoomIdsAsync();
         if (roomIds.Count == 0) return;
 
-        var db = redis.GetDatabase();
         var snapshotCount = 0;
         var errorCount = 0;
 

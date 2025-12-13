@@ -141,6 +141,24 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
             LegalMoves = []
         };
 
+        if (state.IsGameOver())
+        {
+            var winnerRanking = GetWinnerRanking(ref finalState, ctx.Meta);
+            var winnerUserId = winnerRanking.Count > 0 ? winnerRanking[0] : null;
+            var totalPot = ctx.Meta.EntryFee * ctx.Meta.PlayerSeats.Count;
+
+            return GameActionResult.GameOver(
+                response,
+                new GameEndedInfo(
+                    roomId,
+                    GameType,
+                    ctx.Meta.PlayerSeats,
+                    winnerUserId,
+                    totalPot,
+                    ctx.Meta.TurnStartedAt, winnerRanking),
+                events.ToArray());
+        }
+
         return new GameActionResult
         {
             Success = true,

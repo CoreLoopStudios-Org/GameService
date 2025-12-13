@@ -46,6 +46,12 @@ public sealed class RedisGameRepository<TState>(
     IStateMigrationRegistry? migrationRegistry = null) : IGameRepository<TState>
     where TState : struct
 {
+    static RedisGameRepository()
+    {
+        if (RuntimeHelpers.IsReferenceOrContainsReferences<TState>())
+            throw new InvalidOperationException($"Type {typeof(TState).Name} must be unmanaged to use RedisGameRepository.");
+    }
+
     private const byte CurrentVersion = 1;
 
     private static readonly int StateSize = Unsafe.SizeOf<TState>();

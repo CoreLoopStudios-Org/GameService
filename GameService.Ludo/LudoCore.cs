@@ -185,6 +185,16 @@ public static class LudoEngine
             return false;
         }
 
+        if (nextPos != LudoConstants.PosBase && nextPos != LudoConstants.PosHome)
+        {
+            for (var i = 0; i < 4; i++)
+                if (i != tIdx && state.GetTokenPos(p, i) == nextPos)
+                {
+                    result = new MoveResult(LudoStatus.ErrorInvalidMove, curPos);
+                    return false;
+                }
+        }
+
         state.SetTokenPos(p, tIdx, nextPos);
         var status = LudoStatus.Success;
         int capPid = -1, capTid = -1;
