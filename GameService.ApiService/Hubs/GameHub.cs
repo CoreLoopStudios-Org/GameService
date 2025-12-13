@@ -57,10 +57,10 @@ public class GameHub(
 
     public override async Task OnConnectedAsync()
     {
-        var connectionCount = await roomRegistry.IncrementConnectionCountAsync(UserId);
+        var connectionCount = await roomRegistry.IncrementConnectionCountAsync(UserId, Context.ConnectionId);
         if (connectionCount > _maxConnectionsPerUser)
         {
-            await roomRegistry.DecrementConnectionCountAsync(UserId);
+            await roomRegistry.DecrementConnectionCountAsync(UserId, Context.ConnectionId);
             Context.Items["SkipConnectionDecrement"] = true;
 
             logger.LogWarning("Connection limit exceeded for user {UserId}: {Count}/{Max}",
@@ -70,6 +70,28 @@ public class GameHub(
         }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, "Lobby");
+
+        var capturedUserId = UserId;
+        var capturedConnectionId = Context.ConnectionId;
+        _ = Task.Run(async () =>
+        {
+            while (!Context.ConnectionAborted.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(30), Context.ConnectionAborted);
+                    await roomRegistry.IncrementConnectionCountAsync(capturedUserId, capturedConnectionId);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch
+                {
+                    // best-effort heartbeat; disconnect will clear when possible
+                }
+            }
+        });
 
         var disconnectedRoomId = await roomRegistry.TryGetAndRemoveDisconnectedPlayerAsync(UserId);
         if (disconnectedRoomId != null)
@@ -88,7 +110,7 @@ public class GameHub(
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         if (!Context.Items.ContainsKey("SkipConnectionDecrement"))
-            await roomRegistry.DecrementConnectionCountAsync(UserId);
+            await roomRegistry.DecrementConnectionCountAsync(UserId, Context.ConnectionId);
 
         var roomId = await roomRegistry.GetUserRoomAsync(UserId);
 

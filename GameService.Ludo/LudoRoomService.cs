@@ -19,6 +19,9 @@ public sealed class LudoRoomService : IGameRoomService
 
     public async Task<string> CreateRoomAsync(GameRoomMeta meta)
     {
+        if (meta.MaxPlayers is < 1 or > 4)
+            throw new InvalidOperationException("Ludo supports 1-4 players.");
+
         var roomId = GenerateId();
         var state = new LudoState();
         LudoEngine.InitNewGame(ref state, meta.MaxPlayers);

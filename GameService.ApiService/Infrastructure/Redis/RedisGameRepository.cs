@@ -1,5 +1,7 @@
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using GameService.ApiService;
 using GameService.GameCore;
 using StackExchange.Redis;
 
@@ -67,7 +69,7 @@ public sealed class RedisGameRepository<TState>(
 
             var meta = metaTask.Result.IsNullOrEmpty
                 ? new GameRoomMeta { GameType = gameType }
-                : JsonSerializer.Deserialize<GameRoomMeta>(metaTask.Result.ToString()) ??
+                : JsonSerializer.Deserialize(metaTask.Result.ToString(), GameJsonContext.Default.GameRoomMeta) ??
                   new GameRoomMeta { GameType = gameType };
 
             return new GameContext<TState>(roomId, state, meta);
@@ -81,13 +83,23 @@ public sealed class RedisGameRepository<TState>(
 
     public async Task SaveAsync(string roomId, TState state, GameRoomMeta meta)
     {
-        var stateBytes = SerializeState(state);
-        var metaJson = JsonSerializer.Serialize(meta);
+        var buffer = ArrayPool<byte>.Shared.Rent(1 + 4 + StateSize);
+        try
+        {
+            var stateBytes = SerializeState(state, buffer);
+            var metaJson = JsonSerializer.Serialize(meta, GameJsonContext.Default.GameRoomMeta);
 
-        var batch = _db.CreateBatch();
-        _ = batch.StringSetAsync(StateKey(roomId), stateBytes);
-        _ = batch.StringSetAsync(MetaKey(roomId), metaJson);
-        batch.Execute();
+            var batch = _db.CreateBatch();
+            var stateTask = batch.StringSetAsync(StateKey(roomId), stateBytes);
+            var metaTask = batch.StringSetAsync(MetaKey(roomId), metaJson);
+            batch.Execute();
+
+            await Task.WhenAll(stateTask, metaTask);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
 
         await roomRegistry.RegisterRoomAsync(roomId, gameType);
     }
@@ -115,7 +127,7 @@ public sealed class RedisGameRepository<TState>(
 
                 var meta = metaValues[i].IsNullOrEmpty
                     ? new GameRoomMeta { GameType = gameType }
-                    : JsonSerializer.Deserialize<GameRoomMeta>(metaValues[i].ToString()) ??
+                    : JsonSerializer.Deserialize(metaValues[i].ToString(), GameJsonContext.Default.GameRoomMeta) ??
                       new GameRoomMeta { GameType = gameType };
 
                 results.Add(new GameContext<TState>(roomIds[i], state, meta));
@@ -140,9 +152,15 @@ public sealed class RedisGameRepository<TState>(
         return await _db.StringSetAsync(LockKey(roomId), Environment.MachineName, timeout, When.NotExists);
     }
 
+    private const string ReleaseLockLua =
+        "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+
     public async Task ReleaseLockAsync(string roomId)
     {
-        await _db.KeyDeleteAsync(LockKey(roomId));
+        await _db.ScriptEvaluateAsync(
+            ReleaseLockLua,
+            [LockKey(roomId)],
+            [Environment.MachineName]);
     }
 
     private TState DeserializeStateWithMigration(byte[] bytes, string roomId)
@@ -193,13 +211,12 @@ public sealed class RedisGameRepository<TState>(
         return $"game:{gameType}:{{{roomId}}}:lock";
     }
 
-    private static byte[] SerializeState(TState state)
+    private static RedisValue SerializeState(TState state, byte[] buffer)
     {
-        var bytes = new byte[1 + 4 + StateSize];
-        bytes[0] = CurrentVersion;
-        Unsafe.WriteUnaligned(ref bytes[1], StateSize);
-        Unsafe.WriteUnaligned(ref bytes[5], state);
-        return bytes;
+        buffer[0] = CurrentVersion;
+        Unsafe.WriteUnaligned(ref buffer[1], StateSize);
+        Unsafe.WriteUnaligned(ref buffer[5], state);
+        return buffer.AsMemory(0, 1 + 4 + StateSize);
     }
 }
 

@@ -12,11 +12,6 @@ public class RedisLogStreamer(
     PlayerUpdateNotifier notifier,
     ILogger<RedisLogStreamer> logger) : BackgroundService
 {
-    private static readonly JsonSerializerOptions _jsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        AllowTrailingCommas = true
-    };
 
     private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMilliseconds(500);
 
@@ -45,7 +40,7 @@ public class RedisLogStreamer(
                         var payload = (string)message.Message!;
                         logger.LogDebug("⚡ [RedisLogStreamer] Received: {Payload}", payload);
 
-                        var update = JsonSerializer.Deserialize<PlayerUpdatedMessage>(payload, _jsonOptions);
+                        var update = JsonSerializer.Deserialize(payload, ServiceDefaultsJsonContext.Default.PlayerUpdatedMessage);
 
                         if (update != null) _updateChannel.Writer.TryWrite(update);
                     }

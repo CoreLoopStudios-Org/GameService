@@ -31,9 +31,9 @@ public interface IRoomRegistry
 
     Task<bool> CheckRateLimitAsync(string userId, int maxPerMinute);
 
-    Task<int> IncrementConnectionCountAsync(string userId);
+    Task<int> IncrementConnectionCountAsync(string userId, string connectionId);
 
-    Task DecrementConnectionCountAsync(string userId);
+    Task DecrementConnectionCountAsync(string userId, string connectionId);
 
     Task<IReadOnlyList<string>> GetRoomsNeedingTimeoutCheckAsync(string gameType, int maxRooms);
 

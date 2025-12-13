@@ -10,7 +10,8 @@ public class HubGameBroadcaster(IHubContext<GameHub, IGameClient> hubContext, IL
     {
         if (state is GameStateResponse gameState)
         {
-            await hubContext.Clients.Group(roomId).GameState(gameState);
+            await hubContext.Clients.Users(gameState.Meta.PlayerSeats.Keys).GameState(gameState);
+            await hubContext.Clients.Group($"{roomId}:spectators").GameState(gameState);
         }
         else
         {

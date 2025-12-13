@@ -1,11 +1,23 @@
+using Microsoft.Extensions.Hosting;
 using Projects;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
 var cache = builder.AddRedis("cache");
 
-var adminApiKey = builder.Configuration["AdminSettings:ApiKey"]
-    ?? "Dev-Only-Key-ChangeInProd-abc123xyz789!@#$";
+var adminApiKey = builder.Configuration["AdminSettings:ApiKey"];
+if (string.IsNullOrWhiteSpace(adminApiKey))
+{
+    if (builder.Environment.IsDevelopment())
+    {
+        adminApiKey = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        Console.WriteLine($"Generated development AdminSettings__ApiKey: {adminApiKey}");
+    }
+    else
+    {
+        throw new InvalidOperationException("AdminSettings:ApiKey must be configured.");
+    }
+}
 
 var postgres = builder.AddPostgres("postgres").WithPgAdmin();
 var postgresdb = postgres.AddDatabase("postgresdb");

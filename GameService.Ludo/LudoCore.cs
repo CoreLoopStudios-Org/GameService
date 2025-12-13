@@ -108,6 +108,7 @@ public static class LudoEngine
 
         state.ActiveSeats = playerCount switch
         {
+            1 => 0b00000001,
             2 => 0b00000101,
             3 => 0b00000111,
             _ => 0b00001111

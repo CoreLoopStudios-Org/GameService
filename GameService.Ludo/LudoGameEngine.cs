@@ -42,10 +42,11 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
     public LudoGameEngine(
         IGameRepositoryFactory repositoryFactory,
         ILogger<LudoGameEngine> logger,
-        IOptions<LudoOptions>? options = null)
+        IOptions<LudoOptions>? options = null,
+        IDiceRoller? diceRoller = null)
     {
         _repository = repositoryFactory.Create<LudoState>(GameType);
-        _diceRoller = new ServerDiceRoller();
+        _diceRoller = diceRoller ?? new ServerDiceRoller();
         _logger = logger;
         TurnTimeoutSeconds = options?.Value.TurnTimeoutSeconds ?? 30;
     }
@@ -96,26 +97,33 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
 
         var events = new List<GameEvent> { new(LudoEvents.TurnTimeout, new { Player = state.CurrentPlayer }) };
 
-        if (state.LastDiceRoll == 0)
-            if (LudoEngine.TryRollDice(ref state, _diceRoller, out var res))
-                events.Add(new GameEvent(LudoEvents.DiceRolled,
-                    new { Value = res.DiceValue, Player = state.CurrentPlayer, AutoPlay = true }));
-
-        int mask = LudoEngine.GetLegalMovesMask(ref state);
-        if (mask != 0)
+        // Handle extra-turns (e.g., rolling a 6) so timeouts don't "skip" the roll-again phase.
+        for (var autoActions = 0; autoActions < 2 && !state.IsGameOver(); autoActions++)
         {
+            var startingPlayer = state.CurrentPlayer;
+
+            if (state.LastDiceRoll == 0)
+                if (LudoEngine.TryRollDice(ref state, _diceRoller, out var rollRes))
+                    events.Add(new GameEvent(LudoEvents.DiceRolled,
+                        new { Value = rollRes.DiceValue, Player = state.CurrentPlayer, AutoPlay = true }));
+
+            int mask = LudoEngine.GetLegalMovesMask(ref state);
+            if (mask == 0) break;
+
             var tokenToMove = (mask & 1) != 0 ? 0 : (mask & 2) != 0 ? 1 : (mask & 4) != 0 ? 2 : 3;
 
-            if (LudoEngine.TryMoveToken(ref state, tokenToMove, out var res))
+            if (LudoEngine.TryMoveToken(ref state, tokenToMove, out var moveRes))
             {
                 events.Add(new GameEvent(LudoEvents.TokenMoved,
                     new
                     {
-                        Player = ctx.State.CurrentPlayer, TokenIndex = tokenToMove, NewPosition = res.NewPos,
+                        Player = startingPlayer, TokenIndex = tokenToMove, NewPosition = moveRes.NewPos,
                         AutoPlay = true
                     }));
-                ProcessEvents(events, res, ctx.State.CurrentPlayer);
+                ProcessEvents(events, moveRes, startingPlayer);
             }
+
+            if (state.CurrentPlayer != startingPlayer) break;
         }
 
         if (state.TurnId != ctx.State.TurnId || state.CurrentPlayer != ctx.State.CurrentPlayer)

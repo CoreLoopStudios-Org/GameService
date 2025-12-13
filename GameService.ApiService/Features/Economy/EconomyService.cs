@@ -355,11 +355,19 @@ public class EconomyService(
             _ => CalculatePayoutPercentages(ranking.Count)
         };
 
-        for (var i = 0; i < ranking.Count && i < payoutPercentages.Length; i++)
+        var count = Math.Min(ranking.Count, payoutPercentages.Length);
+        if (count == 0) return payouts;
+
+        long sum = 0;
+        for (var i = 0; i < count - 1; i++)
         {
             var payout = (long)(prizePool * payoutPercentages[i]);
             if (payout > 0) payouts[ranking[i]] = payout;
+            sum += payout;
         }
+
+        var lastPayout = prizePool - sum;
+        if (lastPayout > 0) payouts[ranking[count - 1]] = lastPayout;
 
         return payouts;
     }

@@ -39,6 +39,14 @@ public sealed class ApiKeyAuthenticationMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
+        if (_configuredKeyBytes.Length == 0 && !_environment.IsDevelopment() && context.Request.Path.StartsWithSegments("/admin"))
+        {
+            _logger.LogCritical("Admin API key is not configured on server.");
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await context.Response.WriteAsync("Admin authentication misconfigured.");
+            return;
+        }
+
         var apiKey = context.Request.Headers["X-Admin-Key"].FirstOrDefault();
 
         if (!string.IsNullOrEmpty(apiKey))

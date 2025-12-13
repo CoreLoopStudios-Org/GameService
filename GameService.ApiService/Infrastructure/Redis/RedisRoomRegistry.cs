@@ -8,7 +8,11 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
     private const string GlobalRegistryKey = "global:room_registry";
     private const string UserRoomKey = "global:user_rooms";
     private const string DisconnectedPlayersKey = "global:disconnected_players";
-    private const string UserConnectionCountKey = "global:user_connections";
+    private const string OnlineUsersKey = "global:online_users";
+
+    private static readonly TimeSpan ConnectionTtl = TimeSpan.FromMinutes(2);
+
+    private static string UserConnectionsKey(string userId) => $"global:user_connections:{userId}";
     private const string RateLimitKeyPrefix = "ratelimit:";
     private readonly IDatabase _db = redis.GetDatabase();
 
@@ -136,6 +140,9 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
         return (roomIds, nextCursor);
     }
 
+    private const string ReleaseLockLua =
+        "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+
     public async Task<bool> TryAcquireLockAsync(string roomId, TimeSpan timeout)
     {
         return await _db.StringSetAsync(LockKey(roomId), Environment.MachineName, timeout, When.NotExists);
@@ -143,7 +150,10 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
 
     public async Task ReleaseLockAsync(string roomId)
     {
-        await _db.KeyDeleteAsync(LockKey(roomId));
+        await _db.ScriptEvaluateAsync(
+            ReleaseLockLua,
+            [LockKey(roomId)],
+            [Environment.MachineName]);
     }
 
     public async Task SetUserRoomAsync(string userId, string roomId)
@@ -185,16 +195,37 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
         return count <= maxPerMinute;
     }
 
-    public async Task<int> IncrementConnectionCountAsync(string userId)
+    public async Task<int> IncrementConnectionCountAsync(string userId, string connectionId)
     {
-        var count = await _db.HashIncrementAsync(UserConnectionCountKey, userId);
-        return (int)count;
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var minScore = now - (long)ConnectionTtl.TotalSeconds;
+        var key = UserConnectionsKey(userId);
+
+        var batch = _db.CreateBatch();
+        var pruneTask = batch.SortedSetRemoveRangeByScoreAsync(key, double.NegativeInfinity, minScore);
+        var addTask = batch.SortedSetAddAsync(key, connectionId, now);
+        var expireTask = batch.KeyExpireAsync(key, ConnectionTtl);
+        var onlinePruneTask = batch.SortedSetRemoveRangeByScoreAsync(OnlineUsersKey, double.NegativeInfinity, minScore);
+        var onlineAddTask = batch.SortedSetAddAsync(OnlineUsersKey, userId, now);
+        var countTask = batch.SortedSetLengthAsync(key);
+        batch.Execute();
+
+        await Task.WhenAll(pruneTask, addTask, expireTask, onlinePruneTask, onlineAddTask, countTask);
+        return (int)countTask.Result;
     }
 
-    public async Task DecrementConnectionCountAsync(string userId)
+    public async Task DecrementConnectionCountAsync(string userId, string connectionId)
     {
-        var count = await _db.HashDecrementAsync(UserConnectionCountKey, userId);
-        if (count <= 0) await _db.HashDeleteAsync(UserConnectionCountKey, userId);
+        var key = UserConnectionsKey(userId);
+
+        await _db.SortedSetRemoveAsync(key, connectionId);
+
+        var count = await _db.SortedSetLengthAsync(key);
+        if (count <= 0)
+        {
+            await _db.KeyDeleteAsync(key);
+            await _db.SortedSetRemoveAsync(OnlineUsersKey, userId);
+        }
     }
 
     public async Task<IReadOnlyList<string>> GetRoomsNeedingTimeoutCheckAsync(string gameType, int maxRooms)
@@ -221,13 +252,20 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
 
     public async Task<long> GetOnlinePlayerCountAsync()
     {
-        return await _db.HashLengthAsync(UserConnectionCountKey);
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var minScore = now - (long)ConnectionTtl.TotalSeconds;
+        await _db.SortedSetRemoveRangeByScoreAsync(OnlineUsersKey, double.NegativeInfinity, minScore);
+        return await _db.SortedSetLengthAsync(OnlineUsersKey);
     }
 
     public async Task<HashSet<string>> GetOnlineUserIdsAsync()
     {
-        var keys = await _db.HashKeysAsync(UserConnectionCountKey);
-        return keys.Select(k => k.ToString()).ToHashSet();
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var minScore = now - (long)ConnectionTtl.TotalSeconds;
+        await _db.SortedSetRemoveRangeByScoreAsync(OnlineUsersKey, double.NegativeInfinity, minScore);
+
+        var members = await _db.SortedSetRangeByRankAsync(OnlineUsersKey, 0, -1);
+        return members.Select(k => k.ToString()).ToHashSet();
     }
 
     private static string GameTypeIndexKey(string gameType)

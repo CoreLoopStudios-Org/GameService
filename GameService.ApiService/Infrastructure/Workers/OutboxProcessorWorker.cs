@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GameService.ApiService;
 using GameService.ApiService.Features.Games;
 using GameService.ApiService.Hubs;
 using GameService.ServiceDefaults;
@@ -97,7 +98,7 @@ public sealed class OutboxProcessorWorker(
         switch (message.EventType)
         {
             case "PlayerUpdated":
-                var playerUpdate = JsonSerializer.Deserialize<PlayerUpdatedMessage>(message.Payload);
+                var playerUpdate = JsonSerializer.Deserialize(message.Payload, GameJsonContext.Default.PlayerUpdatedMessage);
                 if (playerUpdate != null) await publisher.PublishPlayerUpdatedAsync(playerUpdate);
                 break;
 
@@ -113,8 +114,7 @@ public sealed class OutboxProcessorWorker(
 
     private async Task ProcessGameEndedAsync(string payload, IServiceProvider scopedProvider)
     {
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var gameEndInfo = JsonSerializer.Deserialize<GameEndedPayload>(payload, options);
+        var gameEndInfo = JsonSerializer.Deserialize(payload, GameJsonContext.Default.GameEndedPayload);
 
         if (gameEndInfo == null)
         {
