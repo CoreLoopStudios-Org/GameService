@@ -1,3 +1,4 @@
+using Npgsql;
 using System.Data;
 using System.Text.Json;
 using GameService.ServiceDefaults;
@@ -87,7 +88,7 @@ public class EconomyService(
         {
             for (var attempt = 0; attempt < MaxRetryAttempts; attempt++)
             {
-                using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead);
+                using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
                 try
                 {
                     if (!string.IsNullOrEmpty(idempotencyKey))
@@ -162,7 +163,7 @@ public class EconomyService(
 
                         var newProfile = new PlayerProfile { UserId = userId, Coins = initialCoins, User = user };
                         db.PlayerProfiles.Add(newProfile);
-                        await db.SaveChangesAsync();
+                        // await db.SaveChangesAsync(); // Removed double save
                         newBalance = initialCoins;
                     }
 
@@ -212,6 +213,7 @@ public class EconomyService(
                 catch (DbUpdateConcurrencyException)
                 {
                     await transaction.RollbackAsync();
+                    db.ChangeTracker.Clear(); // Clear tracked entities to avoid re-saving stale state
                     if (attempt < MaxRetryAttempts - 1)
                     {
                         await Task.Delay(Random.Shared.Next(10, 50));
@@ -220,6 +222,18 @@ public class EconomyService(
 
                     return new TransactionResult(false, 0,
                         TransactionErrorType.ConcurrencyConflict, "Concurrent modification detected");
+                }
+                catch (PostgresException ex) when (ex.SqlState == "40001")
+                {
+                    await transaction.RollbackAsync();
+                    db.ChangeTracker.Clear();
+                    if (attempt < MaxRetryAttempts - 1)
+                    {
+                        await Task.Delay(Random.Shared.Next(10, 50));
+                        continue;
+                    }
+                    return new TransactionResult(false, 0,
+                        TransactionErrorType.ConcurrencyConflict, "Serialization failure");
                 }
                 catch (Exception ex)
                 {

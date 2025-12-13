@@ -4,6 +4,7 @@ public sealed record LudoStateDto
 {
     public int CurrentPlayer { get; init; }
     public int LastDiceRoll { get; init; }
+    public int PrevDiceRoll { get; init; }
     public int TurnId { get; init; }
     public int ConsecutiveSixes { get; init; }
     public DateTimeOffset TurnStartedAt { get; init; }

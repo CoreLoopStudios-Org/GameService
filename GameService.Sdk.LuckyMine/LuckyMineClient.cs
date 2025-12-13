@@ -200,7 +200,7 @@ public sealed class LuckyMineClient
         {
             if (data is JsonElement element)
             {
-                return JsonSerializer.Deserialize<LuckyMineState>(element.GetRawText());
+                return element.Deserialize<LuckyMineState>();
             }
             var json = JsonSerializer.Serialize(data);
             return JsonSerializer.Deserialize<LuckyMineState>(json);

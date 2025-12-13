@@ -38,24 +38,31 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
     private const string ShortCodeRegistryKey = "global:short_codes";
     private const string RoomShortCodeKey = "global:room_short_codes";
 
+    private const string ShortCodeCounterKey = "global:short_code_counter";
+    private const string Alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+
     public async Task<string> RegisterShortCodeAsync(string roomId)
     {
-        for (var i = 0; i < 10; i++)
+        var id = await _db.StringIncrementAsync(ShortCodeCounterKey);
+        
+        // Simple bijective obfuscation
+        long x = id;
+        x = (x * 2654435761) & 0xFFFFFFFF;
+        x ^= x >> 13;
+        x = (x * 2654435761) & 0xFFFFFFFF;
+        x ^= x >> 17;
+        
+        var buffer = new char[5];
+        for (var i = 0; i < 5; i++)
         {
-            var code = string.Create(5, (object?)null, (span, _) =>
-            {
-                for (var k = 0; k < span.Length; k++)
-                    span[k] = (char)('1' + System.Security.Cryptography.RandomNumberGenerator.GetInt32(9));
-            });
-
-            if (await _db.HashSetAsync(ShortCodeRegistryKey, code, roomId, When.NotExists))
-            {
-                await _db.HashSetAsync(RoomShortCodeKey, roomId, code);
-                return code;
-            }
+            buffer[i] = Alphabet[(int)(x % 32)];
+            x /= 32;
         }
+        var code = new string(buffer);
 
-        throw new InvalidOperationException("Failed to generate a unique short code after multiple attempts.");
+        await _db.HashSetAsync(ShortCodeRegistryKey, code, roomId);
+        await _db.HashSetAsync(RoomShortCodeKey, roomId, code);
+        return code;
     }
 
     public async Task<string?> GetRoomIdByShortCodeAsync(string shortCode)
@@ -172,25 +179,42 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
         await _db.HashDeleteAsync(UserRoomKey, userId);
     }
 
+    private const string DisconnectedPlayersIndexKey = "global:disconnected_players_index";
+
     public async Task SetDisconnectedPlayerAsync(string userId, string roomId, TimeSpan gracePeriod)
     {
         var key = $"{DisconnectedPlayersKey}:{userId}";
-        await _db.StringSetAsync(key, roomId, gracePeriod);
+        var expiry = DateTimeOffset.UtcNow.Add(gracePeriod).ToUnixTimeSeconds();
+        
+        var batch = _db.CreateBatch();
+        _ = batch.StringSetAsync(key, roomId, gracePeriod.Add(TimeSpan.FromMinutes(5)));
+        _ = batch.SortedSetAddAsync(DisconnectedPlayersIndexKey, userId, expiry);
+        batch.Execute();
     }
 
     public async Task<string?> TryGetAndRemoveDisconnectedPlayerAsync(string userId)
     {
         var key = $"{DisconnectedPlayersKey}:{userId}";
         var roomId = await _db.StringGetDeleteAsync(key);
+        await _db.SortedSetRemoveAsync(DisconnectedPlayersIndexKey, userId);
         return roomId.IsNullOrEmpty ? null : roomId.ToString();
     }
+
+    public async Task<IReadOnlyList<string>> GetExpiredDisconnectedPlayersAsync(int count)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var members = await _db.SortedSetRangeByScoreAsync(DisconnectedPlayersIndexKey, double.NegativeInfinity, now, Exclude.None, Order.Ascending, 0, count);
+        return members.Select(m => m.ToString()).ToList();
+    }
+
+    private const string RateLimitLua = 
+        "local current = redis.call('INCR', KEYS[1]); if current == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end; return current";
 
     public async Task<bool> CheckRateLimitAsync(string userId, int maxPerMinute)
     {
         var key = $"{RateLimitKeyPrefix}{userId}";
-        var count = await _db.StringIncrementAsync(key);
-
-        if (count == 1) await _db.KeyExpireAsync(key, TimeSpan.FromMinutes(1));
+        var result = await _db.ScriptEvaluateAsync(RateLimitLua, [key], [60]);
+        var count = (long)result;
 
         return count <= maxPerMinute;
     }

@@ -258,7 +258,7 @@ public sealed class LudoClient
         {
             if (data is JsonElement element)
             {
-                return JsonSerializer.Deserialize<LudoState>(element.GetRawText());
+                return element.Deserialize<LudoState>();
             }
             var json = JsonSerializer.Serialize(data);
             return JsonSerializer.Deserialize<LudoState>(json);

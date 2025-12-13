@@ -16,7 +16,7 @@ public class RedisLogStreamer(
     private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMilliseconds(500);
 
     private readonly Channel<PlayerUpdatedMessage> _updateChannel = Channel.CreateBounded<PlayerUpdatedMessage>(
-        new BoundedChannelOptions(100) { FullMode = BoundedChannelFullMode.DropOldest });
+        new BoundedChannelOptions(1000) { FullMode = BoundedChannelFullMode.Wait });
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

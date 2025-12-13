@@ -426,16 +426,16 @@ public static class AdminEndpoints
             var cursor = (long)(page - 1) * pageSize;
             var (roomIds, _) = await registry.GetRoomIdsPagedAsync(module.GameName, cursor, pageSize);
 
-            var states = await engine.GetManyStatesAsync(roomIds.ToList());
+            var metas = await engine.GetManyMetasAsync(roomIds.ToList());
 
-            foreach (var state in states)
+            foreach (var (roomId, meta) in metas)
                 allGames.Add(new GameRoomDto(
-                    state.RoomId,
-                    state.GameType,
-                    state.Meta.CurrentPlayerCount,
-                    state.Meta.MaxPlayers,
-                    state.Meta.IsPublic,
-                    state.Meta.PlayerSeats));
+                    roomId,
+                    module.GameName,
+                    meta.CurrentPlayerCount,
+                    meta.MaxPlayers,
+                    meta.IsPublic,
+                    meta.PlayerSeats));
 
             if (allGames.Count >= pageSize) break;
         }

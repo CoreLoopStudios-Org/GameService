@@ -41,6 +41,7 @@ public struct LudoState
     [FieldOffset(23)] public byte FinishedMask;
     [FieldOffset(24)] public byte WinnersCount;
     [FieldOffset(25)] public byte ActiveSeats;
+    [FieldOffset(26)] public byte PrevDiceRoll;
     [FieldOffset(28)] public int TurnId;
 
     public byte GetTokenPos(int player, int tokenIndex)
@@ -235,12 +236,17 @@ public static class LudoEngine
 
     private static void EndTurn(ref LudoState state, bool advance)
     {
-        state.LastDiceRoll = 0;
         if (advance)
         {
+            state.PrevDiceRoll = state.LastDiceRoll;
+            state.LastDiceRoll = 0;
             state.AdvanceTurnPointer();
             state.ConsecutiveSixes = 0;
             state.TurnId++;
+        }
+        else
+        {
+            state.LastDiceRoll = 0;
         }
     }
 

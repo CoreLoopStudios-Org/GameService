@@ -87,6 +87,11 @@ public sealed class LuckyMineEngine(
         return results;
     }
 
+    public async Task<IReadOnlyList<(string RoomId, GameRoomMeta Meta)>> GetManyMetasAsync(IReadOnlyList<string> roomIds)
+    {
+        return await _repository.LoadMetaManyAsync(roomIds);
+    }
+
     private async Task<GameActionResult> HandleClickAsync(string roomId, string userId, int tileIndex)
     {
         var ctx = await _repository.LoadAsync(roomId);
@@ -219,19 +224,19 @@ public sealed class LuckyMineEngine(
         var safeTiles = state.TotalTiles - state.TotalMines;
         if (safeTiles <= 0 || state.RevealedSafeCount <= 0) return 0;
 
-        var multiplier = 1.0;
+        decimal multiplier = 1.0m;
         var remaining = safeTiles;
         int total = state.TotalTiles;
 
         for (var i = 0; i < state.RevealedSafeCount; i++)
         {
             if (remaining <= 0) return 0;
-            multiplier *= (double)total / remaining;
+            multiplier *= (decimal)total / remaining;
             remaining--;
             total--;
         }
 
-        return (long)(state.EntryCost * multiplier * 0.97);
+        return (long)(state.EntryCost * multiplier * 0.97m);
     }
 
     private long CalculateNextWinnings(ref LuckyMineState state)

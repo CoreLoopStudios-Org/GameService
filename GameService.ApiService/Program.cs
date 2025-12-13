@@ -142,6 +142,7 @@ builder.Services.AddGameModule<LudoModule>();
 builder.Services.AddGameModule<LuckyMineModule>();
 
 builder.Services.AddHostedService<GameLoopWorker>();
+builder.Services.AddHostedService<SessionCleanupWorker>();
 builder.Services.AddHostedService<IdempotencyCleanupWorker>();
 builder.Services.AddHostedService<OutboxProcessorWorker>();
 builder.Services.AddHostedService<GameStateSnapshotWorker>();
@@ -172,9 +173,8 @@ else
 app.UseCors();
 app.UseRateLimiter();
 
-app.UseAuthentication();
-
 app.UseApiKeyAuthentication();
+app.UseAuthentication();
 app.UseTokenRevocation();
 
 app.UseAuthorization();

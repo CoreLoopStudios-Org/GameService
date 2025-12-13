@@ -213,6 +213,11 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         return results;
     }
 
+    public async Task<IReadOnlyList<(string RoomId, GameRoomMeta Meta)>> GetManyMetasAsync(IReadOnlyList<string> roomIds)
+    {
+        return await _repository.LoadMetaManyAsync(roomIds);
+    }
+
     private async Task<GameActionResult> HandleRollAsync(string roomId, string userId, JsonElement? payload = null)
     {
         var ctx = await _repository.LoadAsync(roomId);
@@ -353,7 +358,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
 
         return new LudoStateDto
         {
-            CurrentPlayer = s.CurrentPlayer, LastDiceRoll = s.LastDiceRoll, TurnId = s.TurnId,
+            CurrentPlayer = s.CurrentPlayer, LastDiceRoll = s.LastDiceRoll, PrevDiceRoll = s.PrevDiceRoll, TurnId = s.TurnId,
             ConsecutiveSixes = s.ConsecutiveSixes, TurnStartedAt = m.TurnStartedAt,
             TurnTimeoutSeconds = TurnTimeoutSeconds,
             Tokens = tokens, ActiveSeatsMask = s.ActiveSeats, FinishedMask = s.FinishedMask, WinnersPacked = wPacked,

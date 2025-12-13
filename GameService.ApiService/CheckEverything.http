@@ -9,9 +9,9 @@
 # NOTE: These are DEVELOPMENT-ONLY values.
 # In production, credentials come from environment variables.
 
-@adminEmail = admin@gameservice.local
-@adminPassword = Admin@2024#GameService!
-@adminApiKey = Dev-Only-Key-ChangeInProd-abc123xyz789!@#$
+@adminEmail = admin@gameservice.secure
+@adminPassword = SecureAdmin!2025#ChangeMe
+@adminApiKey = Secure-Api-Key-2025-ChangeMe-!@#$
 
 # Dynamic User Credentials (for testing only)
 @userEmail = player_{{$randomInt}}@test.local

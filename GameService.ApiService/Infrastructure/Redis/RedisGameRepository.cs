@@ -141,6 +141,27 @@ public sealed class RedisGameRepository<TState>(
         return results;
     }
 
+    public async Task<IReadOnlyList<(string RoomId, GameRoomMeta Meta)>> LoadMetaManyAsync(IReadOnlyList<string> roomIds)
+    {
+        if (roomIds.Count == 0) return [];
+
+        var metaKeys = roomIds.Select(MetaKey).ToArray();
+        var metaValues = await _db.StringGetAsync(metaKeys.Select(k => (RedisKey)k).ToArray());
+
+        var results = new List<(string, GameRoomMeta)>(roomIds.Count);
+
+        for (var i = 0; i < roomIds.Count; i++)
+        {
+            if (metaValues[i].IsNullOrEmpty) continue;
+
+            var meta = JsonSerializer.Deserialize(metaValues[i].ToString(), GameJsonContext.Default.GameRoomMeta) ??
+                       new GameRoomMeta { GameType = gameType };
+            results.Add((roomIds[i], meta));
+        }
+
+        return results;
+    }
+
     public async Task DeleteAsync(string roomId)
     {
         await _db.KeyDeleteAsync([StateKey(roomId), MetaKey(roomId), LockKey(roomId)]);
@@ -170,6 +191,9 @@ public sealed class RedisGameRepository<TState>(
 
         var storedVersion = bytes[0];
         var storedSize = Unsafe.ReadUnaligned<int>(ref bytes[1]);
+
+        if (bytes.Length < 5 + StateSize)
+            throw new InvalidOperationException("State corrupted: Buffer too small");
 
         if (storedVersion == CurrentVersion && storedSize == StateSize)
             return Unsafe.ReadUnaligned<TState>(ref bytes[5]);

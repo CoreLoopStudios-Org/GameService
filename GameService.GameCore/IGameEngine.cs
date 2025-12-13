@@ -13,6 +13,8 @@ public interface IGameEngine
     Task<GameStateResponse?> GetStateAsync(string roomId);
     
     Task<IReadOnlyList<GameStateResponse>> GetManyStatesAsync(IReadOnlyList<string> roomIds);
+
+    Task<IReadOnlyList<(string RoomId, GameRoomMeta Meta)>> GetManyMetasAsync(IReadOnlyList<string> roomIds);
 }
 
 public interface ITurnBasedGameEngine : IGameEngine

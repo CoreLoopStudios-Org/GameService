@@ -7,6 +7,7 @@ public interface IGameRepository<TState> where TState : struct
     Task<GameContext<TState>?> LoadAsync(string roomId);
     
     Task<IReadOnlyList<GameContext<TState>>> LoadManyAsync(IReadOnlyList<string> roomIds);
+    Task<IReadOnlyList<(string RoomId, GameRoomMeta Meta)>> LoadMetaManyAsync(IReadOnlyList<string> roomIds);
     
     Task SaveAsync(string roomId, TState state, GameRoomMeta meta);
     Task DeleteAsync(string roomId);

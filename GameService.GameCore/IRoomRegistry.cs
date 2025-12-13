@@ -28,6 +28,8 @@ public interface IRoomRegistry
     Task SetDisconnectedPlayerAsync(string userId, string roomId, TimeSpan gracePeriod);
 
     Task<string?> TryGetAndRemoveDisconnectedPlayerAsync(string userId);
+    
+    Task<IReadOnlyList<string>> GetExpiredDisconnectedPlayersAsync(int count);
 
     Task<bool> CheckRateLimitAsync(string userId, int maxPerMinute);
 

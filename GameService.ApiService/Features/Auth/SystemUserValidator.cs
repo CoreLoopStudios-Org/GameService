@@ -8,6 +8,15 @@ public class SystemUserValidator : IUserValidator<ApplicationUser>
 {
     public Task<IdentityResult> ValidateAsync(UserManager<ApplicationUser> manager, ApplicationUser user)
     {
+        if (string.IsNullOrWhiteSpace(user.UserName) || !System.Text.RegularExpressions.Regex.IsMatch(user.UserName, @"^[a-zA-Z0-9@.+\-_]+$"))
+        {
+            return Task.FromResult(IdentityResult.Failed(new IdentityError
+            {
+                Code = "InvalidUserName",
+                Description = "Username can only contain alphanumeric characters, @, ., +, - and _."
+            }));
+        }
+
         if (string.Equals(user.UserName, GameCoreConstants.SystemUserId, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(user.Email, GameCoreConstants.SystemUserId, StringComparison.OrdinalIgnoreCase))
         {
