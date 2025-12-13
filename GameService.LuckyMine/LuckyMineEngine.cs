@@ -1,15 +1,18 @@
 using GameService.GameCore;
 using Microsoft.Extensions.Logging;
+using StackExchange.Redis;
 
 namespace GameService.LuckyMine;
 
 public sealed class LuckyMineEngine(
     IGameRepositoryFactory repoFactory,
+    IConnectionMultiplexer redis,
     ILogger<LuckyMineEngine> logger) : IGameEngine
 {
     private static readonly string[] _legalActions = ["click", "cashout"];
     private static readonly string[] _noActions = [];
     private readonly IGameRepository<LuckyMineState> _repository = repoFactory.Create<LuckyMineState>("LuckyMine");
+    private readonly IDatabase _redisDb = redis.GetDatabase();
 
     public string GameType => "LuckyMine";
 
@@ -186,6 +189,7 @@ public sealed class LuckyMineEngine(
             return GameActionResult.Error("Must reveal at least one tile before cashing out");
 
         state.Status = (byte)LuckyMineStatus.CashedOut;
+        state.PendingPayout = true;
         var winnings = state.CurrentWinnings;
 
         var events = new List<GameEvent>
@@ -198,6 +202,7 @@ public sealed class LuckyMineEngine(
         logger.LogInformation("Room {Room} Player {Player} cashed out with {Winnings}", roomId, userId, winnings);
 
         await _repository.SaveAsync(roomId, state, ctx.Meta);
+        await _redisDb.SetAddAsync("pending_payouts:LuckyMine", roomId);
 
         var cashoutResponse = new GameStateResponse
         {

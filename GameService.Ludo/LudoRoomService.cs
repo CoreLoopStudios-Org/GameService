@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using GameService.GameCore;
+using GameService.Sdk.Ludo;
 using Microsoft.Extensions.Logging;
 
 namespace GameService.Ludo;
@@ -7,11 +8,11 @@ namespace GameService.Ludo;
 public sealed class LudoRoomService : IGameRoomService
 {
     private readonly ILogger<LudoRoomService> _logger;
-    private readonly IGameRepository<LudoState> _repository;
+    private readonly IGameRepository<LudoGameState> _repository;
 
     public LudoRoomService(IGameRepositoryFactory factory, ILogger<LudoRoomService> logger)
     {
-        _repository = factory.Create<LudoState>("Ludo");
+        _repository = factory.Create<LudoGameState>("Ludo");
         _logger = logger;
     }
 
@@ -23,7 +24,7 @@ public sealed class LudoRoomService : IGameRoomService
             throw new InvalidOperationException("Ludo supports 1-4 players.");
 
         var roomId = GenerateId();
-        var state = new LudoState();
+        var state = new LudoGameState();
         LudoEngine.InitNewGame(ref state, meta.MaxPlayers);
 
         await _repository.SaveAsync(roomId, state, meta);

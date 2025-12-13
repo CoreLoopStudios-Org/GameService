@@ -1,5 +1,6 @@
 using System.Text.Json;
 using GameService.GameCore;
+using GameService.Sdk.Ludo;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -37,7 +38,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
     private static readonly string[] EmptyActions = [];
     private readonly IDiceRoller _diceRoller;
     private readonly ILogger<LudoGameEngine> _logger;
-    private readonly IGameRepository<LudoState> _repository;
+    private readonly IGameRepository<LudoGameState> _repository;
 
     public LudoGameEngine(
         IGameRepositoryFactory repositoryFactory,
@@ -45,7 +46,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         IOptions<LudoOptions>? options = null,
         IDiceRoller? diceRoller = null)
     {
-        _repository = repositoryFactory.Create<LudoState>(GameType);
+        _repository = repositoryFactory.Create<LudoGameState>(GameType);
         _diceRoller = diceRoller ?? new ServerDiceRoller();
         _logger = logger;
         TurnTimeoutSeconds = options?.Value.TurnTimeoutSeconds ?? 30;
@@ -326,7 +327,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         return new GameActionResult { Success = true, ShouldBroadcast = true, Events = events, NewState = response };
     }
 
-    private List<string> GetWinnerRanking(ref LudoState state, GameRoomMeta meta)
+    private List<string> GetWinnerRanking(ref LudoGameState state, GameRoomMeta meta)
     {
         var ranking = new List<string>();
         var seatToUser = meta.PlayerSeats.ToDictionary(kvp => kvp.Value, kvp => kvp.Key);
@@ -340,7 +341,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
         return ranking;
     }
 
-    private bool ValidateTurn(GameContext<LudoState> ctx, string userId, out int seat)
+    private bool ValidateTurn(GameContext<LudoGameState> ctx, string userId, out int seat)
     {
         seat = -1;
         if (userId == GameCoreConstants.AdminUserId || userId == GameCoreConstants.SystemUserId)
@@ -365,7 +366,7 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
             list.Add(new GameEvent(LudoEvents.GameEnded, new { }));
     }
 
-    private LudoStateDto MapToDto(ref LudoState s, GameRoomMeta m)
+    private LudoStateDto MapToDto(ref LudoGameState s, GameRoomMeta m)
     {
         var tokens = new byte[16];
         ((ReadOnlySpan<byte>)s.Tokens).CopyTo(tokens);

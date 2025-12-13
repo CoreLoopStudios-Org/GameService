@@ -6,6 +6,7 @@ namespace GameService.ApiService.Infrastructure.Redis;
 public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegistry
 {
     private const string GlobalRegistryKey = "global:room_registry";
+    private const string GlobalActivityIndexKey = "global:activity_index";
     private const string UserRoomKey = "global:user_rooms";
     private const string DisconnectedPlayersKey = "global:disconnected_players";
     private const string OnlineUsersKey = "global:online_users";
@@ -22,6 +23,24 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
         return gameType.IsNullOrEmpty ? null : gameType.ToString();
     }
 
+    public async Task<Dictionary<string, string>> GetGameTypesAsync(IEnumerable<string> roomIds)
+    {
+        var ids = roomIds.ToList();
+        if (ids.Count == 0) return new Dictionary<string, string>();
+
+        var values = await _db.HashGetAsync(GlobalRegistryKey, ids.Select(id => (RedisValue)id).ToArray());
+        var result = new Dictionary<string, string>();
+
+        for (int i = 0; i < ids.Count; i++)
+        {
+            if (!values[i].IsNullOrEmpty)
+            {
+                result[ids[i]] = values[i].ToString();
+            }
+        }
+        return result;
+    }
+
     public async Task RegisterRoomAsync(string roomId, string gameType)
     {
         var batch = _db.CreateBatch();
@@ -30,6 +49,7 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
         _ = batch.HashSetAsync(GlobalRegistryKey, roomId, gameType);
         _ = batch.SortedSetAddAsync(GameTypeIndexKey(gameType), roomId, score);
         _ = batch.SortedSetAddAsync(ActivityIndexKey(gameType), roomId, score);
+        _ = batch.SortedSetAddAsync(GlobalActivityIndexKey, roomId, score);
 
         batch.Execute();
         await Task.CompletedTask;
@@ -91,6 +111,7 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
         _ = batch.HashDeleteAsync(GlobalRegistryKey, roomId);
         _ = batch.SortedSetRemoveAsync(GameTypeIndexKey(gameType), roomId);
         _ = batch.SortedSetRemoveAsync(ActivityIndexKey(gameType), roomId);
+        _ = batch.SortedSetRemoveAsync(GlobalActivityIndexKey, roomId);
 
         var shortCode = await _db.HashGetAsync(RoomShortCodeKey, roomId);
         if (!shortCode.IsNullOrEmpty)
@@ -143,6 +164,16 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
 
         var nextCursor = roomIds.Count == pageSize ? cursor + pageSize : 0;
 
+        return (roomIds, nextCursor);
+    }
+
+    public async Task<(IReadOnlyList<string> RoomIds, long NextCursor)> GetGlobalRoomIdsPagedAsync(long cursor = 0, int pageSize = 50)
+    {
+        var start = cursor;
+        var stop = cursor + pageSize - 1;
+        var members = await _db.SortedSetRangeByRankAsync(GlobalActivityIndexKey, start, stop, Order.Descending);
+        var roomIds = members.Select(m => m.ToString()).ToList();
+        var nextCursor = roomIds.Count == pageSize ? cursor + pageSize : 0;
         return (roomIds, nextCursor);
     }
 
@@ -249,6 +280,19 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
             await _db.KeyDeleteAsync(key);
             await _db.SortedSetRemoveAsync(OnlineUsersKey, userId);
         }
+    }
+
+    public async Task HeartbeatAsync(string userId, string connectionId)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var key = UserConnectionsKey(userId);
+        
+        var batch = _db.CreateBatch();
+        _ = batch.SortedSetAddAsync(key, connectionId, now);
+        _ = batch.KeyExpireAsync(key, ConnectionTtl);
+        _ = batch.SortedSetAddAsync(OnlineUsersKey, userId, now);
+        batch.Execute();
+        await Task.CompletedTask;
     }
 
     public async Task<IReadOnlyList<string>> GetRoomsNeedingTimeoutCheckAsync(string gameType, int maxRooms)

@@ -23,6 +23,20 @@ public interface IGameRepositoryFactory
     IGameRepository<TState> Create<TState>(string gameType) where TState : struct;
 }
 
+public interface IStateMigration<TState> where TState : struct
+{
+    byte FromVersion { get; }
+    byte ToVersion { get; }
+    int FromSize { get; }
+    bool TryMigrate(ReadOnlySpan<byte> oldData, out TState newState);
+}
+
+public interface IStateMigrationRegistry
+{
+    void Register<TState>(IStateMigration<TState> migration) where TState : struct;
+    IStateMigration<TState>? GetMigration<TState>(byte fromVersion, int fromSize) where TState : struct;
+}
+
 public interface IGameState
 {
 }

@@ -1289,6 +1289,9 @@ Content-Type: {{contentType}}
 # 12.4 Claim Daily Login Reward
 POST {{host}}/game/daily-login
 Authorization: Bearer {{user_token}}
+Content-Type: {{contentType}}
+
+{}
 
 > {%
     client.test("Daily Login Claimed", function () {
@@ -1302,6 +1305,9 @@ Authorization: Bearer {{user_token}}
 # 12.5 Claim Daily Spin
 POST {{host}}/game/daily-spin
 Authorization: Bearer {{user_token}}
+Content-Type: {{contentType}}
+
+{}
 
 > {%
     client.test("Daily Spin Claimed", function () {
@@ -1321,7 +1327,7 @@ X-Payment-Signature: test-signature-123
   "userId": "{{user_id}}",
   "amount": 500,
   "referenceId": "ext_payment_{{$randomInt}}",
-  "idempotencyKey": "pay_key_{{$randomInt}}"
+  "idempotencyKey": "pay_key_{{$randomInt}}_{{$timestamp}}"
 }
 
 > {%

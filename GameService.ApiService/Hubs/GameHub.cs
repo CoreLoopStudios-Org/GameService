@@ -366,7 +366,8 @@ public class GameHub(
         if (!string.IsNullOrEmpty(commandId) && await IsCommandProcessedAsync(roomId, commandId))
         {
             logger.LogDebug("Duplicate command {CommandId} for room {RoomId} ignored", commandId, roomId);
-            return GameActionResult.Error("Command already processed");
+            // Return success for idempotent retries
+            return GameActionResult.OkNoState(); 
         }
 
         var gameType = await roomRegistry.GetGameTypeAsync(roomId);
@@ -505,6 +506,11 @@ public class GameHub(
     public async Task<long> GetSpectatorCount(string roomId)
     {
         return await _redisDb.SetLengthAsync($"spectators:{roomId}");
+    }
+
+    public async Task Heartbeat()
+    {
+        await roomRegistry.HeartbeatAsync(UserId, Context.ConnectionId);
     }
 }
 

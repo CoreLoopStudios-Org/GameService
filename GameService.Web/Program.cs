@@ -8,6 +8,8 @@ using GameService.Web.Workers;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,18 +17,22 @@ builder.AddServiceDefaults();
 builder.AddRedisOutputCache("cache");
 builder.AddRedisClient("cache");
 
+var redis = ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("cache") ?? throw new InvalidOperationException("Redis connection string is missing"));
+builder.Services.AddDataProtection()
+    .PersistKeysToStackExchangeRedis(redis, "DataProtection-Keys")
+    .SetApplicationName("GameService");
+
 builder.Services.Configure<GameServiceOptions>(builder.Configuration.GetSection(GameServiceOptions.SectionName));
 
 builder.Services.AddSingleton<PlayerUpdateNotifier>();
 builder.Services.AddScoped<ToastService>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddTransient<CookieHandler>();
 builder.Services.AddHttpClient<GameAdminService>((sp, client) =>
 {
     client.BaseAddress = new Uri("http://apiservice");
-    var config = sp.GetRequiredService<IConfiguration>();
-    var apiKey = config["AdminSettings:ApiKey"];
-    if (!string.IsNullOrWhiteSpace(apiKey))
-        client.DefaultRequestHeaders.Add("X-Admin-Key", apiKey);
-});
+})
+.AddHttpMessageHandler<CookieHandler>();
 builder.Services.AddHostedService<RedisLogStreamer>();
 
 var webDbOptions = builder.Configuration

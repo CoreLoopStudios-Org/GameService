@@ -3,6 +3,7 @@ namespace GameService.GameCore;
 public interface IRoomRegistry
 {
     Task<string?> GetGameTypeAsync(string roomId);
+    Task<Dictionary<string, string>> GetGameTypesAsync(IEnumerable<string> roomIds);
 
     Task RegisterRoomAsync(string roomId, string gameType);
 
@@ -14,6 +15,8 @@ public interface IRoomRegistry
 
     Task<(IReadOnlyList<string> RoomIds, long NextCursor)> GetRoomIdsPagedAsync(string gameType, long cursor = 0,
         int pageSize = 50);
+
+    Task<(IReadOnlyList<string> RoomIds, long NextCursor)> GetGlobalRoomIdsPagedAsync(long cursor = 0, int pageSize = 50);
 
     Task<bool> TryAcquireLockAsync(string roomId, TimeSpan timeout);
 
@@ -36,6 +39,8 @@ public interface IRoomRegistry
     Task<int> IncrementConnectionCountAsync(string userId, string connectionId);
 
     Task DecrementConnectionCountAsync(string userId, string connectionId);
+
+    Task HeartbeatAsync(string userId, string connectionId);
 
     Task<IReadOnlyList<string>> GetRoomsNeedingTimeoutCheckAsync(string gameType, int maxRooms);
     

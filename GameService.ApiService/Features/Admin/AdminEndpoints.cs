@@ -414,30 +414,61 @@ public static class AdminEndpoints
 
         var allGames = new List<GameRoomDto>();
 
-        var modulesToQuery = string.IsNullOrEmpty(gameType)
-            ? modules
-            : modules.Where(m => m.GameName.Equals(gameType, StringComparison.OrdinalIgnoreCase));
-
-        foreach (var module in modulesToQuery)
+        if (string.IsNullOrEmpty(gameType))
         {
-            var engine = sp.GetKeyedService<IGameEngine>(module.GameName);
-            if (engine == null) continue;
-
             var cursor = (long)(page - 1) * pageSize;
-            var (roomIds, _) = await registry.GetRoomIdsPagedAsync(module.GameName, cursor, pageSize);
+            var (roomIds, _) = await registry.GetGlobalRoomIdsPagedAsync(cursor, pageSize);
+            var gameTypes = await registry.GetGameTypesAsync(roomIds);
 
-            var metas = await engine.GetManyMetasAsync(roomIds.ToList());
+            var roomsByType = gameTypes.GroupBy(kvp => kvp.Value, kvp => kvp.Key);
 
-            foreach (var (roomId, meta) in metas)
-                allGames.Add(new GameRoomDto(
-                    roomId,
-                    module.GameName,
-                    meta.CurrentPlayerCount,
-                    meta.MaxPlayers,
-                    meta.IsPublic,
-                    meta.PlayerSeats));
+            foreach (var group in roomsByType)
+            {
+                var type = group.Key;
+                var ids = group.ToList();
 
-            if (allGames.Count >= pageSize) break;
+                var engine = sp.GetKeyedService<IGameEngine>(type);
+                if (engine == null) continue;
+
+                var metas = await engine.GetManyMetasAsync(ids);
+                foreach (var (roomId, meta) in metas)
+                {
+                    allGames.Add(new GameRoomDto(
+                        roomId,
+                        type,
+                        meta.CurrentPlayerCount,
+                        meta.MaxPlayers,
+                        meta.IsPublic,
+                        meta.PlayerSeats));
+                }
+            }
+            
+            var gameMap = allGames.ToDictionary(g => g.RoomId);
+            allGames = roomIds.Where(id => gameMap.ContainsKey(id)).Select(id => gameMap[id]).ToList();
+        }
+        else
+        {
+            var modulesToQuery = modules.Where(m => m.GameName.Equals(gameType, StringComparison.OrdinalIgnoreCase));
+
+            foreach (var module in modulesToQuery)
+            {
+                var engine = sp.GetKeyedService<IGameEngine>(module.GameName);
+                if (engine == null) continue;
+
+                var cursor = (long)(page - 1) * pageSize;
+                var (roomIds, _) = await registry.GetRoomIdsPagedAsync(module.GameName, cursor, pageSize);
+
+                var metas = await engine.GetManyMetasAsync(roomIds.ToList());
+
+                foreach (var (roomId, meta) in metas)
+                    allGames.Add(new GameRoomDto(
+                        roomId,
+                        module.GameName,
+                        meta.CurrentPlayerCount,
+                        meta.MaxPlayers,
+                        meta.IsPublic,
+                        meta.PlayerSeats));
+            }
         }
 
         return Results.Ok(allGames);

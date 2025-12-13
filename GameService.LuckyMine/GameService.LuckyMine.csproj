@@ -8,8 +8,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
-        <ProjectReference Include="..\GameService.GameCore\GameService.GameCore.csproj"/>
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+        <ProjectReference Include="..\GameService.GameCore\GameService.GameCore.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="StackExchange.Redis" Version="2.10.1" />
     </ItemGroup>
 
 </Project>

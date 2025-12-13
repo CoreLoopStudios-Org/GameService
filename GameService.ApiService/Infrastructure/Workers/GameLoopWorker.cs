@@ -6,6 +6,8 @@ using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.DTOs;
 using Microsoft.Extensions.Options;
 
+using StackExchange.Redis;
+
 namespace GameService.ApiService.Infrastructure.Workers;
 
 public sealed class GameLoopWorker(
@@ -13,10 +15,12 @@ public sealed class GameLoopWorker(
     IRoomRegistry roomRegistry,
     IGameBroadcaster broadcaster,
     IOptions<GameServiceOptions> options,
+    IConnectionMultiplexer redis,
     ILogger<GameLoopWorker> logger) : BackgroundService
 {
     private const int MaxRoomsPerTick = 50;
     private readonly int _tickIntervalMs = options.Value.GameLoop.TickIntervalMs;
+    private readonly IDatabase _redisDb = redis.GetDatabase();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -26,7 +30,32 @@ public sealed class GameLoopWorker(
         {
             try
             {
-                await CheckRoomsForTimeoutsOptimized(stoppingToken);
+                // Leader Election
+                // Try to acquire lock or check if we already hold it
+                var lockKey = "leader:gameloop";
+                var myId = Environment.MachineName; // Or a Guid if multiple instances on same machine
+                
+                bool isLeader = false;
+                
+                if (await _redisDb.StringSetAsync(lockKey, myId, TimeSpan.FromSeconds(15), When.NotExists))
+                {
+                    isLeader = true;
+                }
+                else
+                {
+                    var currentLeader = await _redisDb.StringGetAsync(lockKey);
+                    if (currentLeader == myId)
+                    {
+                        isLeader = true;
+                        // Extend lock
+                        await _redisDb.KeyExpireAsync(lockKey, TimeSpan.FromSeconds(15));
+                    }
+                }
+
+                if (isLeader)
+                {
+                    await CheckRoomsForTimeoutsOptimized(stoppingToken);
+                }
             }
             catch (Exception ex)
             {

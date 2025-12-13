@@ -15,6 +15,7 @@ public struct LuckyMineState
     [FieldOffset(36)] public byte TotalMines;
     [FieldOffset(37)] public byte TotalTiles;
     [FieldOffset(38)] public byte Status;
+    [FieldOffset(39)] public bool PendingPayout;
 
     [FieldOffset(40)] public int EntryCost;
     [FieldOffset(44)] public float RewardSlope;

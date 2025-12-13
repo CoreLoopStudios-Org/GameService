@@ -68,6 +68,7 @@ public sealed class GameClient : IAsyncDisposable
 
         var client = new GameClient(hub, baseUrl);
         await hub.StartAsync(cancellationToken);
+        client.StartHeartbeat();
         return client;
     }
 
@@ -100,6 +101,25 @@ public sealed class GameClient : IAsyncDisposable
         LatencyMs = (int)sw.ElapsedMilliseconds;
         OnLatencyUpdate?.Invoke(LatencyMs);
         return LatencyMs;
+    }
+
+    private async void StartHeartbeat()
+    {
+        while (!_disposed)
+        {
+            if (State == ConnectionState.Connected)
+            {
+                try
+                {
+                    await _hub.InvokeAsync("Heartbeat");
+                }
+                catch
+                {
+                    // Ignore errors
+                }
+            }
+            await Task.Delay(TimeSpan.FromSeconds(30));
+        }
     }
 
     public async Task<CreateRoomResult> CreateRoomAsync(string templateName)
@@ -163,14 +183,30 @@ public sealed class GameClient : IAsyncDisposable
             ? JsonDocument.Parse("{}").RootElement 
             : JsonSerializer.SerializeToElement(payload);
 
-        var response = await _hub.InvokeAsync<GameActionResponse>(
-            "PerformAction", 
-            CurrentRoomId, 
-            actionName, 
-            jsonPayload,
-            commandId);
+        commandId ??= Guid.NewGuid().ToString("N");
+        
+        const int maxRetries = 3;
+        for (int i = 0; i <= maxRetries; i++)
+        {
+            try
+            {
+                var response = await _hub.InvokeAsync<GameActionResponse>(
+                    "PerformAction", 
+                    CurrentRoomId, 
+                    actionName, 
+                    jsonPayload,
+                    commandId);
 
-        return new ActionResult(response.Success, response.ErrorMessage, response.NewState);
+                return new ActionResult(response.Success, response.ErrorMessage, response.NewState);
+            }
+            catch (Exception)
+            {
+                if (i == maxRetries) throw;
+                await Task.Delay(500 * (i + 1));
+            }
+        }
+        
+        return new ActionResult(false, "Action failed", null);
     }
 
     public async Task<IReadOnlyList<string>> GetLegalActionsAsync()

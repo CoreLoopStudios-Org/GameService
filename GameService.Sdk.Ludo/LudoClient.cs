@@ -104,11 +104,11 @@ public sealed class LudoClient
         return new DiceRollResult(true, state.LastDiceRoll, canMove, legalTokens, null);
     }
 
-    public async Task<MoveResult> MoveTokenAsync(int tokenIndex)
+    public async Task<ClientMoveResult> MoveTokenAsync(int tokenIndex)
     {
         if (tokenIndex < 0 || tokenIndex > 3)
         {
-            return new MoveResult(false, "Token index must be 0-3");
+            return new ClientMoveResult(false, "Token index must be 0-3");
         }
 
         // Optimistic Update
@@ -135,39 +135,56 @@ public sealed class LudoClient
             }
         }
 
-        return new MoveResult(result.Success, result.Error);
+        return new ClientMoveResult(result.Success, result.Error);
     }
 
     private LudoState? PredictMove(LudoState state, int tokenIndex)
     {
         try 
         {
-            // Deep clone
-            var json = JsonSerializer.Serialize(state);
-            var newState = JsonSerializer.Deserialize<LudoState>(json);
-            if (newState == null) return null;
-
-            // Simple prediction logic (placeholder for full game logic)
-            // In a real app, this would duplicate the server's move logic
-            var tokens = GetPlayerTokens(newState, MySeat);
-            if (tokenIndex < tokens.Length)
+            var structState = new LudoGameState();
+            structState.CurrentPlayer = (byte)state.CurrentPlayer;
+            structState.LastDiceRoll = (byte)state.LastDiceRoll;
+            structState.TurnId = state.TurnId;
+            structState.ConsecutiveSixes = (byte)state.ConsecutiveSixes;
+            structState.ActiveSeats = state.ActiveSeatsMask;
+            structState.FinishedMask = state.FinishedMask;
+            
+            var winners = UnpackWinners(state.WinnersPacked);
+            for(int i=0; i<winners.Length; i++) structState.Winners[i] = (byte)winners[i];
+            structState.WinnersCount = (byte)winners.Length;
+            
+            if (state.Tokens != null)
             {
-                // Just advance visually to show responsiveness
-                // The server state will correct this shortly
-                var currentPos = tokens[tokenIndex];
-                if (currentPos != -1) // Don't move if in home base without 6, etc. (simplified)
-                {
-                     // This is a very rough approximation just to show the UI update
-                     // We don't update the actual array in the clone because it's a flat array in LudoState
-                     // and we need to find the right index.
-                     var baseIndex = MySeat * 4;
-                     if (newState.Tokens != null && newState.Tokens.Length > baseIndex + tokenIndex)
-                     {
-                         newState.Tokens[baseIndex + tokenIndex] = (byte)(newState.Tokens[baseIndex + tokenIndex] + newState.LastDiceRoll);
-                     }
-                }
+                for(int i=0; i<16 && i<state.Tokens.Length; i++) structState.Tokens[i] = state.Tokens[i];
             }
-            return newState;
+            
+            if (LudoEngine.TryMoveToken(ref structState, tokenIndex, out var res))
+            {
+                var newState = new LudoState
+                {
+                    CurrentPlayer = structState.CurrentPlayer,
+                    LastDiceRoll = structState.LastDiceRoll,
+                    TurnId = structState.TurnId,
+                    ConsecutiveSixes = structState.ConsecutiveSixes,
+                    TurnStartedAt = state.TurnStartedAt,
+                    TurnTimeoutSeconds = state.TurnTimeoutSeconds,
+                    ActiveSeatsMask = structState.ActiveSeats,
+                    FinishedMask = structState.FinishedMask,
+                    WinnersPacked = structState.Winners[0] | ((uint)structState.Winners[1] << 8) | ((uint)structState.Winners[2] << 16) | ((uint)structState.Winners[3] << 24),
+                    IsGameOver = structState.IsGameOver(),
+                    Tokens = new byte[16]
+                };
+#if NET8_0_OR_GREATER
+                ((ReadOnlySpan<byte>)structState.Tokens).CopyTo(newState.Tokens);
+#else
+                for(int i=0; i<16; i++) newState.Tokens[i] = structState.Tokens[i];
+#endif
+                newState.LegalMovesMask = LudoEngine.GetLegalMovesMask(ref structState);
+                
+                return newState;
+            }
+            return null;
         }
         catch
         {
@@ -409,4 +426,4 @@ public sealed record DiceRollResult(
     int[] MovableTokens,
     string? Error);
 
-public sealed record MoveResult(bool Success, string? Error);
+public sealed record ClientMoveResult(bool Success, string? Error);

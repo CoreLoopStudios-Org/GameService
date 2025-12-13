@@ -20,6 +20,8 @@ using GameService.ServiceDefaults.Data;
 using GameService.ServiceDefaults.Security;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,6 +53,11 @@ builder.AddNpgsqlDbContext<GameDbContext>("postgresdb", configureDbContextOption
 
 builder.AddRedisClient("cache");
 
+var redis = ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("cache") ?? throw new InvalidOperationException("Redis connection string is missing"));
+builder.Services.AddDataProtection()
+    .PersistKeysToStackExchangeRedis(redis, "DataProtection-Keys")
+    .SetApplicationName("GameService");
+
 builder.Services.Configure<GameServiceOptions>(builder.Configuration.GetSection(GameServiceOptions.SectionName));
 builder.Services.Configure<AdminSettings>(builder.Configuration.GetSection(AdminSettings.SectionName));
 
@@ -62,6 +69,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(1, LudoJsonContext.Default);
     options.SerializerOptions.TypeInfoResolverChain.Insert(2, LuckyMineJsonContext.Default);
     options.SerializerOptions.PropertyNameCaseInsensitive = true;
+    options.SerializerOptions.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString;
 });
 
 builder.Services.AddCors(options =>
@@ -151,6 +159,7 @@ builder.Services.AddHostedService<SessionCleanupWorker>();
 builder.Services.AddHostedService<IdempotencyCleanupWorker>();
 builder.Services.AddHostedService<OutboxProcessorWorker>();
 builder.Services.AddHostedService<GameStateSnapshotWorker>();
+builder.Services.AddHostedService<ConsistencyWorker>();
 
 builder.Services.AddSignalR()
     .AddStackExchangeRedis(builder.Configuration.GetConnectionString("cache") ??

@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
-namespace GameService.Ludo;
+namespace GameService.Sdk.Ludo;
 
 public static class LudoConstants
 {
@@ -18,6 +18,7 @@ public static class LudoConstants
     public const int QuadrantSize = 13;
 }
 
+#if NET8_0_OR_GREATER
 [InlineArray(16)]
 public struct TokenBuffer
 {
@@ -29,9 +30,30 @@ public struct WinnerBuffer
 {
     public byte _element0;
 }
+#else
+public unsafe struct TokenBuffer
+{
+    public fixed byte _elements[16];
+    public byte this[int index]
+    {
+        get => _elements[index];
+        set => _elements[index] = value;
+    }
+}
+
+public unsafe struct WinnerBuffer
+{
+    public fixed byte _elements[4];
+    public byte this[int index]
+    {
+        get => _elements[index];
+        set => _elements[index] = value;
+    }
+}
+#endif
 
 [StructLayout(LayoutKind.Explicit, Size = 36)]
-public struct LudoState
+public struct LudoGameState
 {
     [FieldOffset(0)] public TokenBuffer Tokens;
     [FieldOffset(16)] public WinnerBuffer Winners;
@@ -56,7 +78,7 @@ public struct LudoState
 
     public void AdvanceTurnPointer()
     {
-        var activeCount = BitOperations.PopCount(ActiveSeats);
+        var activeCount = LudoEngine.PopCount(ActiveSeats);
         if (WinnersCount >= (activeCount > 1 ? activeCount - 1 : 1)) return;
 
         var attempts = 0;
@@ -72,7 +94,7 @@ public struct LudoState
 
     public bool IsGameOver()
     {
-        var activeCount = BitOperations.PopCount(ActiveSeats);
+        var activeCount = LudoEngine.PopCount(ActiveSeats);
         return WinnersCount >= (activeCount > 1 ? activeCount - 1 : 1);
     }
 }
@@ -101,7 +123,22 @@ public record struct MoveResult(LudoStatus Status, byte NewPos, int CapturedPid 
 
 public static class LudoEngine
 {
-    public static void InitNewGame(ref LudoState state, int playerCount)
+    public static int PopCount(uint value)
+    {
+#if NETCOREAPP3_0_OR_GREATER
+        return BitOperations.PopCount(value);
+#else
+        int count = 0;
+        while (value != 0)
+        {
+            value &= (value - 1);
+            count++;
+        }
+        return count;
+#endif
+    }
+
+    public static void InitNewGame(ref LudoGameState state, int playerCount)
     {
         state = default;
         for (var i = 0; i < 4; i++) state.Winners[i] = 255;
@@ -118,7 +155,7 @@ public static class LudoEngine
         if ((state.ActiveSeats & (1 << state.CurrentPlayer)) == 0) state.AdvanceTurnPointer();
     }
 
-    public static bool TryRollDice(ref LudoState state, IDiceRoller roller, out RollResult result, byte? forcedDice = null)
+    public static bool TryRollDice(ref LudoGameState state, IDiceRoller roller, out RollResult result, byte? forcedDice = null)
     {
         if (state.IsGameOver())
         {
@@ -161,7 +198,7 @@ public static class LudoEngine
         return true;
     }
 
-    public static bool TryMoveToken(ref LudoState state, int tIdx, out MoveResult result)
+    public static bool TryMoveToken(ref LudoGameState state, int tIdx, out MoveResult result)
     {
         if (state.LastDiceRoll == 0)
         {
@@ -232,7 +269,7 @@ public static class LudoEngine
         return true;
     }
 
-    public static byte GetLegalMovesMask(ref LudoState state)
+    public static byte GetLegalMovesMask(ref LudoGameState state)
     {
         if (state.LastDiceRoll == 0) return 0;
         var mask = 0;
@@ -244,7 +281,7 @@ public static class LudoEngine
         return (byte)mask;
     }
 
-    private static void EndTurn(ref LudoState state, bool advance)
+    private static void EndTurn(ref LudoGameState state, bool advance)
     {
         if (advance)
         {
@@ -260,9 +297,9 @@ public static class LudoEngine
         }
     }
 
-    private static void FillLastLoser(ref LudoState state)
+    private static void FillLastLoser(ref LudoGameState state)
     {
-        var active = BitOperations.PopCount(state.ActiveSeats);
+        var active = PopCount(state.ActiveSeats);
         if (state.WinnersCount >= active) return;
 
         for (var i = 0; i < 4; i++)
@@ -295,7 +332,7 @@ public static class LudoEngine
         return true;
     }
 
-    private static bool CheckPlayerFinished(ref LudoState state, int pIdx)
+    private static bool CheckPlayerFinished(ref LudoGameState state, int pIdx)
     {
         for (var i = 0; i < 4; i++)
             if (state.GetTokenPos(pIdx, i) != LudoConstants.PosHome)
@@ -309,7 +346,7 @@ public static class LudoEngine
         return (local - 1 + p * LudoConstants.QuadrantSize) % LudoConstants.GlobalTrackLength;
     }
 
-    private static bool TryCapture(ref LudoState state, int myPid, byte myLocal, out int vPid, out int vTid)
+    private static bool TryCapture(ref LudoGameState state, int myPid, byte myLocal, out int vPid, out int vTid)
     {
         vPid = vTid = -1;
         var myGlob = GetGlobalPos(myPid, myLocal);

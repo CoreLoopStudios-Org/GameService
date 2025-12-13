@@ -20,6 +20,9 @@ public sealed class LuckyMineModule : IGameModule
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
+        var registry = endpoints.ServiceProvider.GetRequiredService<IStateMigrationRegistry>();
+        registry.Register(new LuckyMineStateMigration());
+
         var admin = endpoints.MapGroup("/admin/luckymine").RequireAuthorization("AdminPolicy");
 
         admin.MapGet("/{roomId}/full-state", async (string roomId, IServiceProvider sp) =>
