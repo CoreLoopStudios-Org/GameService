@@ -440,7 +440,7 @@ public class GameHub(
         await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
         await Groups.AddToGroupAsync(Context.ConnectionId, spectatorGroup);
 
-        await _redisDb.SetAddAsync($"spectators:{roomId}", UserId);
+        await _redisDb.HashIncrementAsync($"spectators:{roomId}", UserId, 1);
 
         var state = await engine.GetStateAsync(roomId);
         if (state != null) await Clients.Caller.GameState(state);
@@ -455,14 +455,15 @@ public class GameHub(
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, spectatorGroup);
 
-        await _redisDb.SetRemoveAsync($"spectators:{roomId}", UserId);
+        var count = await _redisDb.HashIncrementAsync($"spectators:{roomId}", UserId, -1);
+        if (count <= 0) await _redisDb.HashDeleteAsync($"spectators:{roomId}", UserId);
 
         logger.LogInformation("Player {UserId} stopped spectating room {RoomId}", UserId, roomId);
     }
 
     public async Task<long> GetSpectatorCount(string roomId)
     {
-        return await _redisDb.SetLengthAsync($"spectators:{roomId}");
+        return await _redisDb.HashLengthAsync($"spectators:{roomId}");
     }
 
     public async Task Heartbeat()

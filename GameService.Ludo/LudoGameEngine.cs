@@ -361,9 +361,6 @@ public sealed class LudoGameEngine : ITurnBasedGameEngine
 
         if (res.Status.HasFlag(LudoStatus.PlayerFinished))
             list.Add(new GameEvent(LudoEvents.PlayerFinished, new { Player = p }));
-
-        if (res.Status.HasFlag(LudoStatus.ErrorGameEnded))
-            list.Add(new GameEvent(LudoEvents.GameEnded, new { }));
     }
 
     private LudoStateDto MapToDto(ref LudoGameState s, GameRoomMeta m)

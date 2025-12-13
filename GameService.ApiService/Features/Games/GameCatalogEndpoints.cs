@@ -173,15 +173,15 @@ public static class GameCatalogEndpoints
 
         if (engine != null && roomIds.Count > 0)
         {
-            var states = await engine.GetManyStatesAsync(roomIds.ToList());
+            var metas = await engine.GetManyMetasAsync(roomIds.ToList());
 
-            var bestMatch = states.FirstOrDefault(s =>
-                s.Meta.IsPublic &&
-                s.Meta.CurrentPlayerCount < s.Meta.MaxPlayers &&
-                s.Meta.MaxPlayers == targetMaxPlayers &&
-                s.Meta.EntryFee == targetEntryFee);
+            var bestMatch = metas.FirstOrDefault(m =>
+                m.Meta.IsPublic &&
+                m.Meta.CurrentPlayerCount < m.Meta.MaxPlayers &&
+                m.Meta.MaxPlayers == targetMaxPlayers &&
+                m.Meta.EntryFee == targetEntryFee);
 
-            if (bestMatch != null)
+            if (bestMatch.RoomId != null)
             {
                 return Results.Ok(new QuickMatchResponse(bestMatch.RoomId, "Join"));
             }

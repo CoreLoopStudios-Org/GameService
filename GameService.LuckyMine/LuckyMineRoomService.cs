@@ -19,7 +19,7 @@ public sealed class LuckyMineRoomService(
         var totalTiles = meta.Config.TryGetValue("TotalTiles", out var tStr) && int.TryParse(tStr, out var t) ? t : 25;
         var mineCount = meta.Config.TryGetValue("TotalMines", out var mStr) && int.TryParse(mStr, out var m) ? m : 5;
 
-        totalTiles = Math.Clamp(totalTiles, 10, 128);
+        totalTiles = Math.Clamp(totalTiles, 10, 100);
         mineCount = Math.Clamp(mineCount, 1, totalTiles - 1);
 
         var singlePlayerMeta = meta with { MaxPlayers = 1 };

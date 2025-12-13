@@ -356,8 +356,8 @@ public static class AdminEndpoints
             }
             catch (JsonException ex)
             {
-                logger.LogWarning(ex, "Invalid JSON config provided for game type {GameType}",
-                    InputValidator.SanitizeForLogging(gameType));
+                logger.LogWarning("Invalid JSON config provided for game type {GameType}: {Message}",
+                    InputValidator.SanitizeForLogging(gameType), ex.Message);
                 return Results.BadRequest("Invalid configuration JSON format");
             }
 

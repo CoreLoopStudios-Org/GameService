@@ -73,7 +73,13 @@ public static class EconomyEndpoints
             return Results.Unauthorized();
         }
 
-        var payload = $"{req.UserId}:{req.Amount}:{req.ReferenceId}:{req.IdempotencyKey ?? ""}";
+        if (string.IsNullOrEmpty(req.IdempotencyKey))
+        {
+            logger.LogWarning("Credit attempt without IdempotencyKey for User {UserId}", req.UserId);
+            return Results.BadRequest("IdempotencyKey is required");
+        }
+
+        var payload = $"{req.UserId}:{req.Amount}:{req.ReferenceId}:{req.IdempotencyKey}";
         using var hmac = new System.Security.Cryptography.HMACSHA256(System.Text.Encoding.UTF8.GetBytes(secret));
         var computedBytes = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(payload));
 
@@ -184,11 +190,11 @@ public static class EconomyEndpoints
         if (profile == null) return Results.NotFound("Profile not found");
 
         var now = DateTimeOffset.UtcNow;
-        if (profile.LastDailyLogin.HasValue && profile.LastDailyLogin.Value.Date == now.Date)
+        if (profile.LastDailyLogin.HasValue && profile.LastDailyLogin.Value.UtcDateTime.Date == now.UtcDateTime.Date)
             return Results.BadRequest("Already claimed today.");
 
         int newStreak = 1;
-        if (profile.LastDailyLogin.HasValue && profile.LastDailyLogin.Value.Date == now.AddDays(-1).Date)
+        if (profile.LastDailyLogin.HasValue && profile.LastDailyLogin.Value.UtcDateTime.Date == now.AddDays(-1).UtcDateTime.Date)
         {
             newStreak = profile.DailyLoginStreak + 1;
         }

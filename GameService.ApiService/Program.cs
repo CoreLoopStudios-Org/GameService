@@ -115,7 +115,7 @@ builder.Services.AddRateLimiter(options =>
             return RateLimitPartition.GetNoLimiter("health");
 
         return RateLimitPartition.GetFixedWindowLimiter(
-            httpContext.User.Identity?.Name ?? httpContext.Request.Headers.Host.ToString(),
+            httpContext.User.Identity?.Name ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? httpContext.Request.Headers.Host.ToString(),
             _ => new FixedWindowRateLimiterOptions
             {
                 AutoReplenishment = true,
