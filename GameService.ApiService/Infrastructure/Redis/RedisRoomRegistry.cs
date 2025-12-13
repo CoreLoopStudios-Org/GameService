@@ -63,25 +63,32 @@ public sealed class RedisRoomRegistry(IConnectionMultiplexer redis) : IRoomRegis
 
     public async Task<string> RegisterShortCodeAsync(string roomId)
     {
-        var id = await _db.StringIncrementAsync(ShortCodeCounterKey);
-
-        long x = id;
-        x = (x * 2654435761) & 0xFFFFFFFF;
-        x ^= x >> 13;
-        x = (x * 2654435761) & 0xFFFFFFFF;
-        x ^= x >> 17;
-        
-        var buffer = new char[5];
-        for (var i = 0; i < 5; i++)
+        for (int attempt = 0; attempt < 10; attempt++)
         {
-            buffer[i] = Alphabet[(int)(x % 32)];
-            x /= 32;
-        }
-        var code = new string(buffer);
+            var id = await _db.StringIncrementAsync(ShortCodeCounterKey);
 
-        await _db.HashSetAsync(ShortCodeRegistryKey, code, roomId);
-        await _db.HashSetAsync(RoomShortCodeKey, roomId, code);
-        return code;
+            long x = id;
+            x = (x * 2654435761) & 0xFFFFFFFF;
+            x ^= x >> 13;
+            x = (x * 2654435761) & 0xFFFFFFFF;
+            x ^= x >> 17;
+            
+            var buffer = new char[5];
+            for (var i = 0; i < 5; i++)
+            {
+                buffer[i] = Alphabet[(int)(x % 32)];
+                x /= 32;
+            }
+            var code = new string(buffer);
+
+            if (await _db.HashSetAsync(ShortCodeRegistryKey, code, roomId, When.NotExists))
+            {
+                await _db.HashSetAsync(RoomShortCodeKey, roomId, code);
+                return code;
+            }
+        }
+        
+        throw new InvalidOperationException("Failed to generate unique short code after multiple attempts");
     }
 
     public async Task<string?> GetRoomIdByShortCodeAsync(string shortCode)

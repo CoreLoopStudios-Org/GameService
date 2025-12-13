@@ -59,22 +59,30 @@ public sealed class GameStateSnapshotWorker(
         {
             if (ct.IsCancellationRequested) break;
 
-            foreach (var roomId in batch)
+            var batchList = batch.ToList();
+            var gameTypes = await roomRegistry.GetGameTypesAsync(batchList);
+            
+            var redisBatch = db.CreateBatch();
+            var tasks = new List<(string RoomId, string GameType, Task<RedisValue> StateTask, Task<RedisValue> MetaTask)>();
+
+            foreach (var roomId in batchList)
+            {
+                if (!gameTypes.TryGetValue(roomId, out var gameType)) continue;
+
+                var stateKey = $"game:{gameType}:{{{roomId}}}:state";
+                var metaKey = $"game:{gameType}:{{{roomId}}}:meta";
+
+                tasks.Add((roomId, gameType, redisBatch.StringGetAsync(stateKey), redisBatch.StringGetAsync(metaKey)));
+            }
+            
+            redisBatch.Execute();
+            
+            await Task.WhenAll(tasks.Select(t => Task.WhenAll(t.StateTask, t.MetaTask)));
+
+            foreach (var (roomId, gameType, stateTask, metaTask) in tasks)
+            {
                 try
                 {
-                    var gameType = await roomRegistry.GetGameTypeAsync(roomId);
-                    if (gameType == null) continue;
-
-                    var stateKey = $"game:{gameType}:{{{roomId}}}:state";
-                    var metaKey = $"game:{gameType}:{{{roomId}}}:meta";
-
-                    var redisBatch = db.CreateBatch();
-                    var stateTask = redisBatch.StringGetAsync(stateKey);
-                    var metaTask = redisBatch.StringGetAsync(metaKey);
-                    redisBatch.Execute();
-
-                    await Task.WhenAll(stateTask, metaTask);
-
                     if (stateTask.Result.IsNullOrEmpty) continue;
 
                     var stateBytes = (byte[])stateTask.Result!;
@@ -109,6 +117,7 @@ public sealed class GameStateSnapshotWorker(
                     errorCount++;
                     logger.LogWarning(ex, "Failed to snapshot room {RoomId}", roomId);
                 }
+            }
 
             if (snapshotCount > 0) await dbContext.SaveChangesAsync(ct);
         }

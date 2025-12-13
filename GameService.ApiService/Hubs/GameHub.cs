@@ -19,7 +19,6 @@ namespace GameService.ApiService.Hubs;
 public class GameHub(
     IRoomRegistry roomRegistry,
     IServiceProvider serviceProvider,
-    IServiceScopeFactory serviceScopeFactory,
     IOptions<GameServiceOptions> options,
     IConnectionMultiplexer redis,
     ShardedGameCommandProcessor commandProcessor,
@@ -113,47 +112,6 @@ public class GameHub(
 
                         await Clients.Group(roomId).PlayerDisconnected(
                             new PlayerDisconnectedPayload(UserId, UserName, _reconnectionGracePeriodSeconds));
-
-                        var capturedUserId = UserId;
-                        var capturedUserName = UserName;
-                        var capturedRoomId = roomId;
-                        var capturedGameType = gameType;
-                        var gracePeriod = _reconnectionGracePeriodSeconds;
-                        var capturedLockKey = lockKey;
-
-                        _ = Task.Delay(TimeSpan.FromSeconds(gracePeriod + 2)).ContinueWith(async _ =>
-                        {
-                            if (!await roomRegistry.TryAcquireLockAsync(capturedLockKey, TimeSpan.FromSeconds(5)))
-                                return;
-
-                            try
-                            {
-                                var stillDisconnected =
-                                    await roomRegistry.TryGetAndRemoveDisconnectedPlayerAsync(capturedUserId);
-                                if (stillDisconnected == capturedRoomId)
-                                {
-                                    using var scope = serviceScopeFactory.CreateScope();
-                                    var roomService =
-                                        scope.ServiceProvider.GetKeyedService<IGameRoomService>(capturedGameType);
-                                    if (roomService != null)
-                                        await roomService.LeaveRoomAsync(capturedRoomId, capturedUserId);
-
-                                    await roomRegistry.RemoveUserRoomAsync(capturedUserId);
-
-                                    var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<GameHub, IGameClient>>();
-                                    await hubContext.Clients.Group(capturedRoomId).PlayerLeft(
-                                        new PlayerLeftPayload(capturedUserId, capturedUserName));
-
-                                    logger.LogInformation(
-                                        "Player {UserId} grace period expired, removed from room {RoomId}",
-                                        capturedUserId, capturedRoomId);
-                                }
-                            }
-                            finally
-                            {
-                                await roomRegistry.ReleaseLockAsync(capturedLockKey);
-                            }
-                        });
                     }
                     finally
                     {
@@ -363,13 +321,6 @@ public class GameHub(
         if (!await CheckRateLimitAsync())
             return GameActionResult.Error("Rate limit exceeded. Please slow down.");
 
-        if (!string.IsNullOrEmpty(commandId) && await IsCommandProcessedAsync(roomId, commandId))
-        {
-            logger.LogDebug("Duplicate command {CommandId} for room {RoomId} ignored", commandId, roomId);
-            // Return success for idempotent retries
-            return GameActionResult.OkNoState(); 
-        }
-
         var gameType = await roomRegistry.GetGameTypeAsync(roomId);
         if (gameType == null) return GameActionResult.Error("Room not found");
 
@@ -380,6 +331,12 @@ public class GameHub(
         
         return await _commandProcessor.ProcessCommandAsync(roomId, async () =>
         {
+            if (!string.IsNullOrEmpty(commandId) && await IsCommandProcessedAsync(roomId, commandId))
+            {
+                logger.LogDebug("Duplicate command {CommandId} for room {RoomId} ignored", commandId, roomId);
+                return GameActionResult.OkNoState();
+            }
+
             try
             {
                 var command = new GameCommand(capturedUserId, actionName, payload);

@@ -108,9 +108,7 @@ public class EconomyService(
                     }
 
                     var profile = await db.PlayerProfiles
-                        .FromSqlRaw(
-                            "SELECT * FROM \"PlayerProfiles\" WHERE \"UserId\" = {0} AND \"IsDeleted\" = false FOR UPDATE",
-                            userId)
+                        .Where(p => p.UserId == userId && !p.IsDeleted)
                         .FirstOrDefaultAsync();
 
                     long newBalance;
@@ -468,7 +466,7 @@ public class EconomyService(
                 progression.HasClaimedWelcomeBonus = true;
 
                 var profile = await db.PlayerProfiles
-                    .FromSqlRaw("SELECT * FROM \"PlayerProfiles\" WHERE \"UserId\" = {0} AND \"IsDeleted\" = false FOR UPDATE", userId)
+                    .Where(p => p.UserId == userId && !p.IsDeleted)
                     .FirstOrDefaultAsync();
 
                 long newBalance;
@@ -603,7 +601,7 @@ public class EconomyService(
                 long rewardAmount = rewardsMap.TryGetValue(progression.DailyLoginStreak, out var amt) ? amt : 50;
 
                 var profile = await db.PlayerProfiles
-                    .FromSqlRaw("SELECT * FROM \"PlayerProfiles\" WHERE \"UserId\" = {0} AND \"IsDeleted\" = false FOR UPDATE", userId)
+                    .Where(p => p.UserId == userId && !p.IsDeleted)
                     .FirstOrDefaultAsync();
 
                 long newBalance;

@@ -107,6 +107,8 @@ public sealed class LuckyMineRoomService(
 
     private void PopulateMines(ref LuckyMineState state, int totalTiles, int mineCount)
     {
+        state.MineMask0 = 0;
+        state.MineMask1 = 0;
         Span<int> indices = stackalloc int[totalTiles];
         for (var i = 0; i < totalTiles; i++) indices[i] = i;
 

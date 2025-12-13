@@ -64,8 +64,10 @@ public static class EconomyEndpoints
         }
         catch
         {
+#if DEBUG
             if (options.Value.Security.EnforceApiKeyValidation == false && provided == "test-signature-123")
                 return await ProcessDevTestCreditAsync(req, service);
+#endif
 
             logger.LogWarning("Invalid payment signature format for User {UserId}", req.UserId);
             return Results.Unauthorized();

@@ -85,15 +85,13 @@ public sealed class GameLoopWorker(
 
                 if (roomIds.Count == 0) continue;
 
-                foreach (var roomId in roomIds)
+                await Parallel.ForEachAsync(roomIds, new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = 10 }, async (roomId, token) =>
                 {
-                    if (ct.IsCancellationRequested) return;
-
                     try
                     {
                         // Lock is still useful to prevent conflict with user actions
                         if (!await roomRegistry.TryAcquireLockAsync(roomId, TimeSpan.FromSeconds(1)))
-                            continue;
+                            return;
 
                         try
                         {
@@ -125,20 +123,7 @@ public sealed class GameLoopWorker(
                                 if (result.GameEnded != null)
                                 {
                                     // ... existing game ended logic ...
-                                    // Remove from timeout index
-                                    // We don't have UnregisterTurnTimeout, but we can set score to +infinity or remove.
-                                    // Let's assume UnregisterRoomAsync handles cleanup when game ends?
-                                    // But here we just schedule archival.
                                 }
-                            }
-                            else
-                            {
-                                // Timeout check failed or no timeout needed?
-                                // Maybe the room was in the index but state changed?
-                                // We should probably remove it from index to avoid infinite loop if it keeps failing.
-                                // But maybe we should backoff?
-                                // For now, let's assume if CheckTimeoutsAsync returns false, we should remove it?
-                                // Or maybe update it to check again later?
                             }
                         }
                         finally
@@ -150,7 +135,7 @@ public sealed class GameLoopWorker(
                     {
                         logger.LogWarning(ex, "Error checking timeout for room {RoomId}", roomId);
                     }
-                }
+                });
             }
             catch (Exception ex)
             {

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using GameService.ApiService.Features.Economy;
 using GameService.ApiService.Hubs;
 using GameService.GameCore;
 using GameService.ServiceDefaults;
@@ -554,8 +555,7 @@ public static class AdminEndpoints
         string userId,
         [FromBody] UpdateCoinRequest req,
         HttpContext httpContext,
-        GameDbContext db,
-        IGameEventPublisher publisher,
+        IEconomyService economyService,
         ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger("AdminEndpoints");
@@ -567,50 +567,20 @@ public static class AdminEndpoints
             return Results.BadRequest("Invalid amount");
 
         var adminId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "api-key-admin";
+        var referenceId = $"ADMIN:{InputValidator.SanitizeForLogging(adminId, 50)}";
 
-        var strategy = db.Database.CreateExecutionStrategy();
-        return await strategy.ExecuteAsync(async () =>
+        var result = await economyService.ProcessTransactionAsync(userId, req.Amount, referenceId);
+
+        if (!result.Success)
         {
-            await using var tx = await db.Database.BeginTransactionAsync();
-            try
-            {
-                var rows = await db.PlayerProfiles.Where(p => p.UserId == userId).ExecuteUpdateAsync(setters =>
-                    setters.SetProperty(p => p.Coins, p => p.Coins + req.Amount).SetProperty(p => p.Version, Guid.NewGuid()));
-                if (rows == 0) return Results.NotFound();
+            logger.LogError("Failed to update coins for user {UserId}: {Error}", userId, result.ErrorMessage);
+            return Results.Problem(result.ErrorMessage ?? "Failed to update coins", statusCode: StatusCodes.Status500InternalServerError);
+        }
 
-                var profile = await db.PlayerProfiles.Include(p => p.User).AsNoTracking().FirstAsync(p => p.UserId == userId);
+        logger.LogInformation("Admin {AdminId} adjusted coins for user {UserId} by {Amount}. New balance: {Balance}",
+            InputValidator.SanitizeForLogging(adminId, 50), userId, req.Amount, result.NewBalance);
 
-                var auditEntry = new WalletTransaction
-                {
-                    UserId = userId,
-                    Amount = req.Amount,
-                    BalanceAfter = profile.Coins,
-                    TransactionType = "AdminAdjust",
-                    Description = $"Admin adjustment by {InputValidator.SanitizeForLogging(adminId, 50)}",
-                    ReferenceId = $"ADMIN:{InputValidator.SanitizeForLogging(adminId, 50)}",
-                    CreatedAt = DateTimeOffset.UtcNow
-                };
-                db.WalletTransactions.Add(auditEntry);
-                await db.SaveChangesAsync();
-
-                await tx.CommitAsync();
-
-                logger.LogInformation("Admin {AdminId} adjusted coins for user {UserId} by {Amount}. New balance: {Balance}",
-                    InputValidator.SanitizeForLogging(adminId, 50), userId, req.Amount, profile.Coins);
-
-                await publisher.PublishPlayerUpdatedAsync(new PlayerUpdatedMessage(profile.UserId, profile.Coins,
-                    profile.User?.UserName, profile.User?.Email));
-
-                return Results.Ok(new { NewBalance = profile.Coins });
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to update coins for user {UserId}", userId);
-                await tx.RollbackAsync();
-                return Results.Problem("Failed to update coins", statusCode: StatusCodes.Status500InternalServerError);
-            }
-        });
-
+        return Results.Ok(new { NewBalance = result.NewBalance });
     }
 
     private static async Task<IResult> DeletePlayer(string userId, UserManager<ApplicationUser> userManager,
