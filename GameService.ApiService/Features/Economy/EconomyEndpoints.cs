@@ -185,13 +185,10 @@ public static class EconomyEndpoints
         if (profile.LastDailyLogin.HasValue && profile.LastDailyLogin.Value.Date == now.Date)
             return Results.BadRequest("Already claimed today.");
 
+        int newStreak = 1;
         if (profile.LastDailyLogin.HasValue && profile.LastDailyLogin.Value.Date == now.AddDays(-1).Date)
         {
-            profile.DailyLoginStreak++;
-        }
-        else
-        {
-            profile.DailyLoginStreak = 1;
+            newStreak = profile.DailyLoginStreak + 1;
         }
 
         RewardDto reward = new("Coin", "Coin", 100);
@@ -202,7 +199,7 @@ public static class EconomyEndpoints
                 var rewards = JsonSerializer.Deserialize<List<RewardDto>>(json);
                 if (rewards != null && rewards.Count > 0)
                 {
-                    var dayIndex = (profile.DailyLoginStreak - 1) % rewards.Count;
+                    var dayIndex = (newStreak - 1) % rewards.Count;
                     reward = rewards[dayIndex];
                 }
             }
@@ -216,7 +213,7 @@ public static class EconomyEndpoints
                 var amounts = JsonSerializer.Deserialize<List<long>>(oldJson);
                 if (amounts != null && amounts.Count > 0)
                 {
-                    var dayIndex = (profile.DailyLoginStreak - 1) % amounts.Count;
+                    var dayIndex = (newStreak - 1) % amounts.Count;
                     reward = new RewardDto("Coin", "Coin", amounts[dayIndex]);
                 }
             }
@@ -257,6 +254,7 @@ public static class EconomyEndpoints
             });
         }
 
+        profile.DailyLoginStreak = newStreak;
         profile.LastDailyLogin = now;
         await db.SaveChangesAsync();
 

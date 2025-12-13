@@ -128,6 +128,9 @@ public class EconomyService(
                         if (rows == 0)
                         {
                             await transaction.RollbackAsync();
+                            
+                            await db.Entry(profile).ReloadAsync();
+
                             if (attempt < MaxRetryAttempts - 1)
                             {
                                 await Task.Delay(Random.Shared.Next(10, 50));
@@ -212,7 +215,11 @@ public class EconomyService(
                 catch (DbUpdateConcurrencyException)
                 {
                     await transaction.RollbackAsync();
-                    db.ChangeTracker.Clear();
+                    
+                    var trackedProfile = db.ChangeTracker.Entries<PlayerProfile>()
+                        .FirstOrDefault(e => e.Entity.UserId == userId)?.Entity;
+                    if (trackedProfile != null) await db.Entry(trackedProfile).ReloadAsync();
+
                     if (attempt < MaxRetryAttempts - 1)
                     {
                         await Task.Delay(Random.Shared.Next(10, 50));
@@ -225,7 +232,11 @@ public class EconomyService(
                 catch (PostgresException ex) when (ex.SqlState == "40001")
                 {
                     await transaction.RollbackAsync();
-                    db.ChangeTracker.Clear();
+                    
+                    var trackedProfile = db.ChangeTracker.Entries<PlayerProfile>()
+                        .FirstOrDefault(e => e.Entity.UserId == userId)?.Entity;
+                    if (trackedProfile != null) await db.Entry(trackedProfile).ReloadAsync();
+
                     if (attempt < MaxRetryAttempts - 1)
                     {
                         await Task.Delay(Random.Shared.Next(10, 50));

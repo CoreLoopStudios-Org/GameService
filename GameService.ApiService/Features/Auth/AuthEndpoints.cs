@@ -19,6 +19,14 @@ public static class AuthEndpoints
                 {
                     await revocationService.RevokeTokenAsync(jti);
                 }
+                else
+                {
+                    var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+                    if (!string.IsNullOrEmpty(userId))
+                    {
+                        await revocationService.RevokeAllUserTokensAsync(userId);
+                    }
+                }
 
                 return Results.Ok(new { Message = "Logged out successfully" });
             })

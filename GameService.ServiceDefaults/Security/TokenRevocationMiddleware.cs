@@ -27,11 +27,11 @@ public sealed class TokenRevocationMiddleware
     {
         if (context.User.Identity?.IsAuthenticated == true)
         {
+            var db = _redis.GetDatabase();
             var jti = context.User.FindFirstValue("jti");
             
             if (!string.IsNullOrEmpty(jti))
             {
-                var db = _redis.GetDatabase();
                 var key = $"{TokenBlacklistPrefix}{jti}";
                 
                 if (await db.KeyExistsAsync(key))
@@ -40,6 +40,38 @@ public sealed class TokenRevocationMiddleware
                     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     await context.Response.WriteAsync("Token has been revoked");
                     return;
+                }
+            }
+
+            var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!string.IsNullOrEmpty(userId))
+            {
+                var userKey = $"revoked:user:{userId}";
+                var revokedAt = await db.StringGetAsync(userKey);
+                if (revokedAt.HasValue && long.TryParse(revokedAt.ToString(), out var revokedTime))
+                {
+                    // If we can't determine token age (no iat), we must assume it's old if user is revoked.
+                    // Or we can try to find 'iat' claim.
+                    var iatClaim = context.User.FindFirstValue("iat");
+                    if (long.TryParse(iatClaim, out var iat))
+                    {
+                        if (iat < revokedTime)
+                        {
+                            _logger.LogWarning("Token issued before user revocation used: user={UserId}", userId);
+                            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                            await context.Response.WriteAsync("Session expired");
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        // Fallback: if no iat, and user is revoked, block.
+                        // This is aggressive but safe for "Logout" scenario where we want to kill sessions.
+                        _logger.LogWarning("Token without iat used for revoked user: user={UserId}", userId);
+                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        await context.Response.WriteAsync("Session expired");
+                        return;
+                    }
                 }
             }
         }

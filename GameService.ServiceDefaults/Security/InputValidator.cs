@@ -82,7 +82,7 @@ public static partial class InputValidator
 
         try
         {
-            JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json);
             return true;
         }
         catch
